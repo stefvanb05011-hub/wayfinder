@@ -1,0 +1,116 @@
+/* Wayfinder — physical geography features and Flag Builder layouts.
+   Coordinates are [longitude, latitude], hand-traced and approximate.
+   r = how close (in km) a click must be to count as correct. */
+window.GEO_FEATURES = [
+  // ---------- Rivers (traced from source to mouth) ----------
+  { n: "Nile", t: "river", r: 250, pts: [[33.0,0.4],[32.5,3.5],[31.6,9.5],[32.5,15.6],[33.9,18.5],[31.0,21.5],[32.9,24.1],[31.2,30.0],[31.0,31.5]] },
+  { n: "Amazon", t: "river", r: 250, pts: [[-73.4,-4.4],[-70,-3.5],[-65,-3],[-60,-3.1],[-55,-2.2],[-51.5,-1.0],[-50,0]] },
+  { n: "Mississippi", t: "river", r: 200, pts: [[-95.2,47.2],[-93.1,44.9],[-91.2,43.0],[-90.2,38.6],[-89.6,36.0],[-91.1,32.3],[-90.1,29.9],[-89.3,29.1]] },
+  { n: "Yangtze", t: "river", r: 250, pts: [[91.0,33.5],[97.5,32.0],[100.2,26.8],[104.6,28.8],[106.6,29.6],[111.3,30.7],[114.3,30.6],[118.8,32.1],[121.5,31.4]] },
+  { n: "Danube", t: "river", r: 150, pts: [[8.5,48.0],[11.0,48.7],[16.4,48.2],[19.0,47.5],[18.9,45.5],[20.5,44.8],[22.5,44.6],[25.4,43.7],[28.0,45.4],[29.6,45.2]] },
+  { n: "Rhine", t: "river", r: 120, pts: [[9.2,46.6],[9.6,47.5],[7.6,47.6],[8.4,49.0],[8.3,50.0],[7.6,50.4],[6.9,50.9],[6.2,51.8],[4.1,51.9]] },
+  { n: "Ganges", t: "river", r: 200, pts: [[78.9,30.9],[78.2,29.9],[80.3,26.5],[82.9,25.3],[85.1,25.6],[87.8,25.0],[89.0,23.5],[90.5,22.5]] },
+  { n: "Mekong", t: "river", r: 200, pts: [[94.7,33.6],[98.9,28.5],[100.1,22.0],[102.6,18.0],[105.8,15.1],[105.9,11.5],[106.7,9.8]] },
+  { n: "Congo", t: "river", r: 200, pts: [[28.0,-9.0],[26.0,-5.0],[25.2,0.5],[22.0,1.8],[18.3,0.0],[16.0,-3.0],[15.3,-4.3],[12.4,-6.0]] },
+  { n: "Niger", t: "river", r: 200, pts: [[-10.3,9.1],[-8.0,12.6],[-4.0,15.0],[-3.0,16.8],[0.0,16.3],[2.1,13.5],[4.5,11.0],[6.7,7.8],[6.1,4.3]] },
+  { n: "Volga", t: "river", r: 200, pts: [[32.6,57.2],[37.6,57.6],[40.0,57.7],[44.0,56.3],[49.1,55.8],[48.4,53.3],[46.0,51.5],[44.5,48.7],[47.8,46.2]] },
+  { n: "Thames", t: "river", r: 60, pts: [[-1.98,51.69],[-1.25,51.75],[-0.98,51.46],[-0.13,51.5],[0.7,51.48]] },
+  { n: "Seine", t: "river", r: 80, pts: [[4.7,47.5],[4.0,48.3],[2.35,48.85],[1.1,49.4],[0.1,49.45]] },
+  { n: "Zambezi", t: "river", r: 180, pts: [[24.0,-11.4],[23.2,-15.5],[25.86,-17.9],[28.7,-16.5],[32.0,-15.6],[35.5,-17.6],[36.4,-18.9]] },
+  { n: "Murray", t: "river", r: 150, pts: [[148.2,-36.8],[146.9,-36.1],[144.7,-35.6],[142.2,-34.2],[140.6,-34.2],[139.3,-35.5]] },
+  { n: "Indus", t: "river", r: 200, pts: [[81.0,31.0],[77.6,34.2],[75.3,35.7],[72.7,33.9],[71.0,31.0],[68.4,25.4],[67.5,24.0]] },
+  { n: "Rio Grande", t: "river", r: 150, pts: [[-107.0,37.8],[-106.6,35.1],[-106.5,31.8],[-104.5,29.6],[-101.0,29.6],[-99.5,27.5],[-97.2,25.95]] },
+  { n: "Paraná", t: "river", r: 180, pts: [[-47.9,-20.1],[-51.0,-22.8],[-54.6,-25.5],[-58.7,-27.4],[-60.7,-32.9],[-58.4,-34.0]] },
+
+  // ---------- Mountain ranges ----------
+  { n: "Himalayas", t: "range", r: 250, pts: [[73.5,35.5],[77,33.5],[80.5,30.5],[84,28.3],[87,27.9],[90,27.8],[93,28.5],[95.5,29]] },
+  { n: "Andes", t: "range", r: 300, pts: [[-71.5,10.5],[-75.5,4.5],[-78.5,-1],[-76,-10],[-70,-16.5],[-68.5,-23],[-70,-33],[-71.5,-41],[-73,-50]] },
+  { n: "Alps", t: "range", r: 150, pts: [[7.0,44.3],[7.0,45.9],[8.5,46.4],[10.5,46.6],[12.5,47.0],[14.5,47.3],[16.0,47.6]] },
+  { n: "Rocky Mountains", t: "range", r: 300, pts: [[-120,58],[-117,53],[-113,48.5],[-110.5,44.5],[-106.5,40],[-106,36],[-105.5,33]] },
+  { n: "Ural Mountains", t: "range", r: 250, pts: [[59,68],[60,64],[59.5,60],[59,56],[58.5,52]] },
+  { n: "Atlas Mountains", t: "range", r: 200, pts: [[-9.5,30.5],[-7,31.5],[-4,33],[0,34.5],[5,35.5],[9,35.6]] },
+  { n: "Pyrenees", t: "range", r: 100, pts: [[-1.8,43.2],[0,42.8],[1.5,42.6],[3.1,42.4]] },
+  { n: "Caucasus", t: "range", r: 150, pts: [[37.5,44.5],[41,43.4],[43.5,42.8],[46,42],[49,40.8]] },
+  { n: "Appalachians", t: "range", r: 200, pts: [[-85.5,34],[-83,36],[-80,38],[-77.5,40.5],[-74,42.5],[-71,44.5],[-68.5,46]] },
+  { n: "Carpathians", t: "range", r: 150, pts: [[17.5,48.5],[20.0,49.3],[22.5,49.3],[24.5,48.2],[25.5,47.3],[25.8,45.7],[23.5,45.3],[22.0,44.8]] },
+  { n: "Great Dividing Range", t: "range", r: 250, pts: [[145,-15],[146.5,-20],[148,-25],[151,-30],[150,-34],[148,-37]] },
+
+  // ---------- Peaks ----------
+  { n: "Mount Everest", t: "peak", r: 200, pts: [[86.925,27.988]] },
+  { n: "Kilimanjaro", t: "peak", r: 200, pts: [[37.355,-3.068]] },
+  { n: "Mont Blanc", t: "peak", r: 100, pts: [[6.865,45.833]] },
+  { n: "Mount Fuji", t: "peak", r: 150, pts: [[138.727,35.361]] },
+  { n: "Aconcagua", t: "peak", r: 200, pts: [[-70.011,-32.653]] },
+  { n: "Denali", t: "peak", r: 250, pts: [[-151.007,63.069]] },
+  { n: "Mount Elbrus", t: "peak", r: 150, pts: [[42.439,43.355]] },
+
+  // ---------- Oceans & seas ----------
+  { n: "Pacific Ocean", t: "water", r: 2500, pts: [[-150,0],[160,20],[-120,-30],[-170,35]] },
+  { n: "Atlantic Ocean", t: "water", r: 1800, pts: [[-40,35],[-30,0],[-20,-30]] },
+  { n: "Indian Ocean", t: "water", r: 1800, pts: [[75,-10],[80,-30],[60,-20]] },
+  { n: "Arctic Ocean", t: "water", r: 1200, pts: [[0,85],[150,80],[-120,80]] },
+  { n: "Southern Ocean", t: "water", r: 1200, pts: [[0,-60],[120,-62],[-120,-65]] },
+  { n: "Mediterranean Sea", t: "water", r: 500, pts: [[4,39],[18,35],[28,34]] },
+  { n: "Caribbean Sea", t: "water", r: 700, pts: [[-75,15]] },
+  { n: "Black Sea", t: "water", r: 350, pts: [[34.5,43.2]] },
+  { n: "Caspian Sea", t: "water", r: 350, pts: [[50.5,42]] },
+  { n: "Red Sea", t: "water", r: 300, pts: [[38.5,20]] },
+  { n: "North Sea", t: "water", r: 350, pts: [[3,56]] },
+  { n: "Baltic Sea", t: "water", r: 350, pts: [[19,57.5]] },
+  { n: "Gulf of Mexico", t: "water", r: 500, pts: [[-90,25]] },
+  { n: "Persian Gulf", t: "water", r: 250, pts: [[51.5,27]] },
+  { n: "Bay of Bengal", t: "water", r: 500, pts: [[88,15]] },
+  { n: "South China Sea", t: "water", r: 600, pts: [[114,14]] },
+  { n: "Arabian Sea", t: "water", r: 600, pts: [[64,16]] },
+  { n: "Hudson Bay", t: "water", r: 500, pts: [[-85,59]] },
+  { n: "Sea of Japan", t: "water", r: 400, pts: [[135,40]] },
+  { n: "Coral Sea", t: "water", r: 500, pts: [[155,-18]] },
+  { n: "Bering Sea", t: "water", r: 600, pts: [[-178,58]] },
+
+  // ---------- Lakes ----------
+  { n: "Lake Victoria", t: "lake", r: 200, pts: [[33,-1]] },
+  { n: "Lake Baikal", t: "lake", r: 120, pts: [[104.5,51.8],[108,53.5],[109.8,55.5]] },
+  { n: "Great Lakes", t: "lake", r: 200, pts: [[-87,44],[-82.5,44.5],[-81,42.2],[-78,43.6],[-87.5,47.7]] },
+  { n: "Lake Titicaca", t: "lake", r: 150, pts: [[-69.4,-15.9]] },
+  { n: "Lake Tanganyika", t: "lake", r: 120, pts: [[29.5,-4.5],[30.5,-7.5]] },
+  { n: "Dead Sea", t: "lake", r: 100, pts: [[35.5,31.5]] },
+
+  // ---------- Deserts ----------
+  { n: "Sahara", t: "desert", r: 900, pts: [[-5,24],[10,24],[25,24]] },
+  { n: "Gobi Desert", t: "desert", r: 500, pts: [[105,43]] },
+  { n: "Kalahari Desert", t: "desert", r: 400, pts: [[22,-23]] },
+  { n: "Arabian Desert", t: "desert", r: 600, pts: [[46,23]] },
+  { n: "Atacama Desert", t: "desert", r: 300, pts: [[-69.5,-24]] },
+  { n: "Great Victoria Desert", t: "desert", r: 350, pts: [[127,-29]] },
+
+  // ---------- Straits, canals & capes ----------
+  { n: "Strait of Gibraltar", t: "passage", r: 120, pts: [[-5.6,35.95]] },
+  { n: "Panama Canal", t: "passage", r: 120, pts: [[-79.7,9.1]] },
+  { n: "Suez Canal", t: "passage", r: 120, pts: [[32.35,30.6]] },
+  { n: "Bosphorus", t: "passage", r: 80, pts: [[29.05,41.1]] },
+  { n: "Strait of Malacca", t: "passage", r: 250, pts: [[100.5,3.5]] },
+  { n: "Cape of Good Hope", t: "passage", r: 150, pts: [[18.47,-34.36]] }
+];
+
+/* Flag Builder: simple flags without emblems.
+   Layouts: v3 = three vertical stripes, h3 / h2 = horizontal stripes,
+   nordic = [field, cross], nordic2 = [field, outer cross, inner cross], disc = [field, circle]. */
+window.FLAG_COLOURS = {
+  red: "#d52b1e", white: "#ffffff", blue: "#0b3d91", lightblue: "#4fb3e8",
+  green: "#128a3c", yellow: "#f7c51e", orange: "#f77f00", black: "#111111"
+};
+window.FLAG_LAYOUTS = [
+  ["de","h3",["black","red","yellow"]], ["nl","h3",["red","white","blue"]], ["ru","h3",["white","blue","red"]],
+  ["at","h3",["red","white","red"]], ["hu","h3",["red","white","green"]], ["bg","h3",["white","green","red"]],
+  ["lt","h3",["yellow","green","red"]], ["ee","h3",["blue","black","white"]], ["lu","h3",["red","white","lightblue"]],
+  ["am","h3",["red","blue","orange"]], ["ga","h3",["green","yellow","blue"]], ["sl","h3",["green","white","blue"]],
+  ["ye","h3",["red","white","black"]],
+  ["ua","h2",["blue","yellow"]], ["pl","h2",["white","red"]], ["id","h2",["red","white"]], ["mc","h2",["red","white"]],
+  ["fr","v3",["blue","white","red"]], ["it","v3",["green","white","red"]], ["ie","v3",["green","white","orange"]],
+  ["be","v3",["black","yellow","red"]], ["ro","v3",["blue","yellow","red"]], ["td","v3",["blue","yellow","red"]],
+  ["ml","v3",["green","yellow","red"]], ["gn","v3",["red","yellow","green"]], ["ci","v3",["orange","white","green"]],
+  ["ng","v3",["green","white","green"]], ["pe","v3",["red","white","red"]],
+  ["dk","nordic",["red","white"]], ["se","nordic",["blue","yellow"]], ["fi","nordic",["white","blue"]],
+  ["no","nordic2",["red","white","blue"]], ["is","nordic2",["blue","white","red"]],
+  ["jp","disc",["white","red"]], ["bd","disc",["green","red"]], ["pw","disc",["lightblue","yellow"]]
+];

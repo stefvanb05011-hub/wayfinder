@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4efe4">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Wayfinder">
+  <title>Wayfinder — Geography Practice</title>
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    // Apply saved theme before paint (avoids a white flash in dark mode)
+    try {
+      var s = JSON.parse(localStorage.getItem('wayfinder:settings') || '{}');
+      var t = s.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.dataset.theme = t;
+    } catch (e) {}
+    // The app manifest only works when served by the launcher (not from a double-clicked file)
+    if (location.protocol.indexOf('http') === 0) {
+      var l = document.createElement('link'); l.rel = 'manifest'; l.href = 'manifest.webmanifest'; document.head.appendChild(l);
+    }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="brand" id="brandBtn" aria-label="Back to start">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13"/><path d="M3 16h26M16 3c4 4 5.5 8.5 5.5 13S20 25 16 29M16 3c-4 4-5.5 8.5-5.5 13S12 25 16 29"/></svg>
+      <span>Wayfinder</span>
+    </button>
+    <div class="top-right">
+      <div class="hud" id="hud" hidden>
+        <span class="hud-item"><b id="hudQ">1/10</b><small id="hudQLabel">question</small></span>
+        <span class="hud-item"><b id="hudScore">0</b><small>points</small></span>
+        <span class="hud-item streak" id="hudStreakWrap"><b id="hudStreak">0</b><small>streak</small></span>
+        <button class="btn ghost small" id="quitBtn">Quit</button>
+      </div>
+      <button class="xp-pill" id="xpPill" aria-label="Your level and achievements"></button>
+      <button class="icon-btn" id="soundBtn" aria-label="Toggle sound"></button>
+      <button class="icon-btn" id="themeBtn" aria-label="Toggle dark mode"></button>
+      <button class="icon-btn" id="settingsBtn" aria-label="Settings" title="Settings"></button>
+    </div>
+  </header>
+
+  <main>
+    <!-- HOME -->
+    <section id="home" class="screen active">
+      <div class="hero">
+        <p class="eyebrow">Geography practice</p>
+        <h1>Know the world,<br><em>one country at a time.</em></h1>
+        <p class="lede" id="lede"></p>
+      </div>
+
+      <div class="settings">
+        <div class="setting"><span class="setting-label">Region</span><div class="chips" id="regionChips"></div></div>
+        <div class="setting"><span class="setting-label">Questions</span><div class="chips" id="lengthChips"></div></div>
+        <div class="setting"><span class="setting-label">Difficulty</span><div class="chips" id="difficultyChips"></div></div>
+        <div class="setting"><span class="setting-label">Timer per question</span><div class="chips" id="timerChips"></div></div>
+      </div>
+
+      <div id="dailyCard"></div>
+      <div id="modeGroups"></div>
+
+      <p class="foot">Keyboard: <kbd>1</kbd>–<kbd>4</kbd> to answer · <kbd>Enter</kbd> for next · <kbd>Esc</kbd> to quit. Works offline — keep all files and folders together.</p>
+    </section>
+
+    <!-- QUIZ / EXPLORE / NAME THEM ALL -->
+    <section id="quiz" class="screen">
+      <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="stage">
+        <div class="panel" id="quizPanel">
+          <div class="q-timer" id="qTimer" hidden><i></i></div>
+          <p class="eyebrow" id="qEyebrow"></p>
+          <h2 class="q-text" id="qText"></h2>
+          <div class="flag-frame" id="flagFrame" hidden><img id="qFlag" alt="Flag to identify"></div>
+          <div class="custom" id="custom" hidden></div>
+          <div class="options" id="options"></div>
+          <form class="type-form" id="typeForm" hidden autocomplete="off">
+            <input id="typeInput" type="text" spellcheck="false" autocapitalize="off" autocomplete="off">
+            <div class="type-actions">
+              <button type="submit" class="btn primary">Check</button>
+              <button type="button" class="btn ghost" id="hintBtn">Hint</button>
+              <button type="button" class="btn ghost" id="skipBtn">I don't know</button>
+            </div>
+            <p class="hint-text" id="hintText"></p>
+          </form>
+          <div class="feedback" id="feedback" aria-live="polite"></div>
+          <button class="btn primary next" id="nextBtn" hidden>Next →</button>
+        </div>
+
+        <div class="panel" id="explorePanel" hidden>
+          <p class="eyebrow">Explore</p>
+          <h2 class="q-text">Click any country</h2>
+          <input class="search" id="searchInput" list="countryList" placeholder="…or search for one" autocomplete="off">
+          <datalist id="countryList"></datalist>
+          <div class="info-card" id="infoCard"></div>
+        </div>
+
+        <div class="panel" id="namePanel" hidden>
+          <p class="eyebrow">Name them all</p>
+          <h2 class="q-text name-count"><span id="nameCount">0</span><small> / <span id="nameTotal">0</span></small></h2>
+          <div class="name-timer" id="nameTimer">15:00</div>
+          <input class="search" id="nameInput" placeholder="Type any country…" autocomplete="off" spellcheck="false" autocapitalize="off">
+          <p class="name-msg" id="nameMsg"></p>
+          <div class="name-regions" id="nameRegions"></div>
+          <button class="btn" id="giveUpBtn">Give up</button>
+          <button class="btn primary" id="nameResultsBtn" hidden>See results →</button>
+        </div>
+
+        <div class="map-slot" id="quizMapSlot">
+          <div class="map-wrap" id="mapWrap">
+            <div id="map"></div>
+            <div class="map-tip" id="mapTip" hidden></div>
+            <div class="map-controls">
+              <button id="zoomIn" aria-label="Zoom in">+</button>
+              <button id="zoomOut" aria-label="Zoom out">−</button>
+              <button id="zoomReset" aria-label="Reset view">⟲</button>
+            </div>
+            <div class="map-status" id="mapStatus">Loading map…</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROGRESS -->
+    <section id="progress" class="screen">
+      <div class="progress-head">
+        <div>
+          <p class="eyebrow">Your progress</p>
+          <h2 class="r-title">World mastery</h2>
+        </div>
+        <button class="btn ghost small" id="resetBtn">Reset progress</button>
+      </div>
+      <div class="stats" id="pStats"></div>
+      <div class="map-slot progress-map" id="progressMapSlot"></div>
+      <div class="legend">
+        <span><i class="lg lg0"></i>Not seen yet</span>
+        <span><i class="lg lg1"></i>Needs work</span>
+        <span><i class="lg lg2"></i>Learning</span>
+        <span><i class="lg lg3"></i>Mastered (3 right in a row)</span>
+      </div>
+      <div class="progress-cols">
+        <div class="panel"><h3 class="panel-title">By region</h3><div id="pRegions"></div></div>
+        <div class="panel"><h3 class="panel-title">Your hardest countries</h3><ul class="mistakes" id="pHardest"></ul></div>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section id="results" class="screen">
+      <div class="results-card">
+        <p class="eyebrow" id="rMode"></p>
+        <h2 class="r-title" id="rTitle"></h2>
+        <div class="r-badges" id="rBadges"></div>
+        <div class="stats" id="rStats"></div>
+        <div class="r-actions">
+          <button class="btn primary" id="againBtn">Play again</button>
+          <button class="btn" id="mistakesBtn">Practise my mistakes</button>
+          <button class="btn ghost" id="homeBtn">Change mode</button>
+        </div>
+        <h3 class="panel-title" id="mistakesTitle">Review</h3>
+        <ul class="mistakes" id="rMistakes"></ul>
+      </div>
+    </section>
+
+    <!-- ACHIEVEMENTS & LEVEL -->
+    <section id="profile" class="screen">
+      <div class="profile-head panel" id="profileHead"></div>
+      <p class="muted xp-how" id="xpHow"></p>
+      <div class="title-list" id="titleList"></div>
+      <h3 class="group-title" id="achTitle">Achievements</h3>
+      <div class="ach-grid" id="achGrid"></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="settings" class="screen">
+      <div class="settings-page">
+        <p class="eyebrow">Settings</p>
+        <h2 class="r-title">Make it yours</h2>
+
+        <div class="panel">
+          <h3 class="panel-title">Which countries count</h3>
+          <p class="muted">There’s no single official list of countries. Untick any of these to leave them out of every mode.</p>
+          <div class="toggles" id="setCountries"></div>
+          <div class="chips preset-row">
+            <button class="chip" id="presetUN">UN members only (193)</button>
+            <button class="chip" id="preset197">Sporcle list (197)</button>
+          </div>
+          <p class="set-count" id="setCount"></p>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Gameplay</h3>
+          <div class="set-row"><span>Difficulty</span><div class="chips" id="setDifficulty"></div></div>
+          <div class="set-row"><span>Questions per round</span><div class="chips" id="setLength"></div></div>
+          <div class="set-row"><span>Timer per question</span><div class="chips" id="setTimer"></div></div>
+          <div class="set-row"><span>Theme</span><div class="chips" id="setTheme"></div></div>
+          <div class="set-row"><span>Sound</span><div class="chips" id="setSound"></div></div>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Your progress</h3>
+          <p class="muted">Progress is saved in this browser. Make a backup file to keep it safe or move it to the installed app.</p>
+          <div class="r-actions">
+            <button class="btn" id="exportBtn">Save a backup file</button>
+            <button class="btn" id="importBtn">Load a backup file</button>
+            <button class="btn ghost" id="resetBtn2">Reset everything</button>
+            <input type="file" id="importFile" accept="application/json,.json" hidden>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Install as an app</h3>
+          <p class="muted" id="installStatus"></p>
+          <ol class="install-steps">
+            <li><b>Start the launcher.</b> In the Wayfinder folder, double-click <code>Start Wayfinder.command</code>. The first time, macOS may ask — right-click it, choose <i>Open</i>, then <i>Open</i> again. Wayfinder opens in your browser.</li>
+            <li><b>Install it.</b> In <b>Chrome</b>: click the install icon at the right of the address bar (or menu ⋮ → <i>Cast, save and share</i> → <i>Install page as app</i>). In <b>Safari</b>: <i>File</i> → <i>Add to Dock</i>.</li>
+            <li><b>Play from your Dock or Launchpad.</b> After installing it works offline — you don’t need the launcher any more.</li>
+          </ol>
+          <p class="muted">Progress in the installed app is separate from the double-click version. Use <i>Save a backup file</i> here and <i>Load a backup file</i> in the app to bring it across.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <canvas id="confetti" aria-hidden="true"></canvas>
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="lib/d3.min.js"></script>
+  <script src="lib/topojson-client.min.js"></script>
+  <script src="lib/world.js"></script>
+  <script src="data.js"></script>
+  <script src="facts.js"></script>
+  <script src="extras-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
