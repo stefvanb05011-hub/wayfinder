@@ -1971,10 +1971,7 @@
     $('#setTimer').innerHTML = chips('timer');
     $('#setTheme').innerHTML = chipRow([['light', 'Light'], ['dark', 'Dark']], settings.theme, 'theme-set');
     $('#setSound').innerHTML = chipRow([['on', 'On'], ['off', 'Off']], settings.muted ? 'off' : 'on', 'sound-set');
-    const http = location.protocol.startsWith('http');
-    $('#installStatus').textContent = http
-      ? 'You’re running Wayfinder through the launcher, so you can install it now (step 2).'
-      : 'You opened index.html directly, which is fine for playing. To install it as an app, start it with the launcher first (step 1).';
+    Install.renderSettings();
   }
   $('#settings').addEventListener('click', e => {
     const chip = e.target.closest('.chip');
@@ -2022,6 +2019,92 @@
   $('#resetBtn2').onclick = () => { if (confirmReset()) renderSettings(); };
 
   // =====================================================================
+  // "Install as an app" — a one-tap button where the browser allows it,
+  // clear instructions where it doesn't (iPhone/iPad, Safari on Mac, Firefox)
+  // =====================================================================
+  const SHARE_ICON = '<svg class="share-ic" viewBox="0 0 24 24" aria-label="Share"><path d="M12 3v12M7.5 7.5L12 3l4.5 4.5"/><path d="M6 11H5v10h14V11h-1"/></svg>';
+  const Install = {
+    deferred: null,
+    isStandalone: () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true,
+    isWeb: () => location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1',
+    platform() {
+      const ua = navigator.userAgent;
+      const iOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+      if (iOS) return /CriOS|FxiOS|EdgiOS/.test(ua) ? 'ios-other' : 'ios';
+      if (/Android/.test(ua)) return /Firefox/.test(ua) ? 'android-firefox' : 'android';
+      if (/Firefox/.test(ua)) return 'firefox';
+      if (/Macintosh/.test(ua) && /Safari/.test(ua) && !/Chrome|Chromium|Edg|OPR/.test(ua)) return 'mac-safari';
+      return 'chromium';
+    },
+    howTo() {
+      switch (this.platform()) {
+        case 'ios': return `Tap the Share button ${SHARE_ICON} at the bottom (or top) of Safari, then <b>Add to Home Screen</b>.`;
+        case 'ios-other': return `Tap the Share button ${SHARE_ICON} next to the address bar, then <b>Add to Home Screen</b>.`;
+        case 'mac-safari': return 'In the menu bar choose <b>File → Add to Dock</b>.';
+        case 'android-firefox': return 'Tap the <b>⋮</b> menu, then <b>Install</b>.';
+        case 'android': return 'Tap the <b>⋮</b> menu, then <b>Install app</b> (or <b>Add to Home screen</b>).';
+        case 'firefox': return 'Firefox can’t install apps on computers — open this page in <b>Chrome</b>, <b>Edge</b> or <b>Safari</b> to install it.';
+        default: return 'Click the install icon at the right end of the address bar, or open the browser menu (⋮) and choose <b>Install Wayfinder</b>.';
+      }
+    },
+    showBanner(force = false) {
+      if (this.isStandalone() || !this.isWeb()) return;
+      if (!force && Date.now() - store.get('installDismissed', 0) < 7 * 864e5) return;
+      if (!force && document.body.classList.contains('in-game')) return;
+      // In Chrome/Edge only offer it once the browser confirms it can install (one tap)
+      if (!force && this.platform() === 'chromium' && !this.deferred) return;
+      const can = !!this.deferred;
+      $('#ibMsg').innerHTML = can ? 'Play offline from your home screen or desktop — it only takes a tap.' : this.howTo();
+      $('#ibInstall').hidden = !can;
+      $('#ibLater').textContent = can ? 'Not now' : 'Got it';
+      $('#installBanner').hidden = false;
+    },
+    hideBanner() { $('#installBanner').hidden = true; },
+    async prompt() {
+      if (!this.deferred) { this.showBanner(true); return; }
+      const ev = this.deferred;
+      this.deferred = null;
+      this.hideBanner();
+      ev.prompt();
+      try { const { outcome } = await ev.userChoice; if (outcome !== 'accepted') store.set('installDismissed', Date.now()); } catch (e) { /* ignore */ }
+      this.renderSettings();
+    },
+    renderSettings() {
+      const web = this.isWeb() && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
+      $('#installWeb').hidden = !web;
+      $('#installLocal').hidden = web;
+      if (this.isStandalone()) {
+        $('#installStatus').textContent = 'You’re using the installed app. Nice!';
+        $('#installWeb').hidden = true; $('#installLocal').hidden = true;
+        return;
+      }
+      if (web) {
+        $('#installStatus').textContent = '';
+        $('#installHow').innerHTML = this.deferred ? 'Your browser can install Wayfinder in one tap:' : this.howTo();
+        $('#installNowBtn').hidden = !this.deferred;
+      } else {
+        $('#installStatus').textContent = location.protocol.startsWith('http')
+          ? 'You’re running Wayfinder through the launcher, so you can install it now (step 2).'
+          : 'You opened index.html directly, which is fine for playing. To install it as an app on this Mac, start it with the launcher first (step 1).';
+      }
+    }
+  };
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    Install.deferred = e;
+    Install.showBanner(!$('#installBanner').hidden);
+    if ($('#settings').classList.contains('active')) Install.renderSettings();
+  });
+  window.addEventListener('appinstalled', () => {
+    Install.deferred = null;
+    Install.hideBanner();
+    toast('Wayfinder is installed — find it on your home screen or in your apps.');
+  });
+  $('#ibInstall').onclick = () => Install.prompt();
+  $('#installNowBtn').onclick = () => Install.prompt();
+  $('#ibLater').onclick = () => { store.set('installDismissed', Date.now()); Install.hideBanner(); };
+
+  // =====================================================================
   // Keyboard
   // =====================================================================
   document.addEventListener('keydown', e => {
@@ -2049,5 +2132,11 @@
   setTimeout(() => MapView.load().catch(() => {}), 30);
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  // First visit: offer to install (Chrome/Edge show it as soon as the browser says it can install)
+  setTimeout(() => Install.showBanner(), 2500);
+  if (Install.isWeb() && !Install.isStandalone()) {
+    $('.foot').insertAdjacentHTML('beforeend', ' <button class="link-btn" id="footInstall">Install as an app</button>');
+    $('#footInstall').onclick = () => Install.prompt();
   }
 })();

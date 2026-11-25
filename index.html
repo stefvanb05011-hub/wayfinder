@@ -213,16 +213,30 @@
         <div class="panel">
           <h3 class="panel-title">Install as an app</h3>
           <p class="muted" id="installStatus"></p>
-          <ol class="install-steps">
+          <div class="install-web" id="installWeb" hidden>
+            <p class="install-how" id="installHow"></p>
+            <button class="btn primary" id="installNowBtn" hidden>Install Wayfinder</button>
+            <p class="muted">Works on iPhone, iPad, Android, Windows, Mac and Chromebook. Once installed it opens like a normal app and works offline.</p>
+          </div>
+          <ol class="install-steps" id="installLocal">
             <li><b>Start the launcher.</b> In the Wayfinder folder, double-click <code>Start Wayfinder.command</code>. The first time, macOS may ask — right-click it, choose <i>Open</i>, then <i>Open</i> again. Wayfinder opens in your browser.</li>
             <li><b>Install it.</b> In <b>Chrome</b>: click the install icon at the right of the address bar (or menu ⋮ → <i>Cast, save and share</i> → <i>Install page as app</i>). In <b>Safari</b>: <i>File</i> → <i>Add to Dock</i>.</li>
             <li><b>Play from your Dock or Launchpad.</b> After installing it works offline — you don’t need the launcher any more.</li>
           </ol>
-          <p class="muted">Progress in the installed app is separate from the double-click version. Use <i>Save a backup file</i> here and <i>Load a backup file</i> in the app to bring it across.</p>
+          <p class="muted">Progress in the installed app is separate from the browser version. Use <i>Save a backup file</i> here and <i>Load a backup file</i> in the app to bring it across.</p>
         </div>
       </div>
     </section>
   </main>
+
+  <div class="install-banner" id="installBanner" hidden role="dialog" aria-label="Install Wayfinder">
+    <img src="icons/icon-192.png" alt="">
+    <div class="ib-text"><b>Install Wayfinder</b><span id="ibMsg"></span></div>
+    <div class="ib-actions">
+      <button class="btn primary small" id="ibInstall" hidden>Install</button>
+      <button class="btn ghost small" id="ibLater">Not now</button>
+    </div>
+  </div>
 
   <canvas id="confetti" aria-hidden="true"></canvas>
   <div class="toast" id="toast" hidden></div>

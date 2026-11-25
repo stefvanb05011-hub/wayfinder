@@ -708,3 +708,29 @@ main { padding: clamp(16px, 4vw, 40px); max-width: 1280px; margin: 0 auto; }
   .set-row { flex-direction: column; align-items: flex-start; }
   .set-row .chips { margin: 0; padding: 0; width: 100%; }
 }
+
+/* ---------- install banner ---------- */
+.install-banner {
+  position: fixed; z-index: 40; left: 50%; transform: translateX(-50%);
+  bottom: max(16px, env(safe-area-inset-bottom));
+  width: min(560px, calc(100% - 24px));
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px;
+  padding: 14px 16px; border-radius: 16px;
+  background: var(--card); border: 1px solid var(--line);
+  box-shadow: 0 18px 40px -16px rgba(0,0,0,.45);
+  animation: slideUp .35s ease both;
+}
+@keyframes slideUp { from { transform: translate(-50%, 30px); opacity: 0; } }
+.install-banner img { width: 48px; height: 48px; border-radius: 12px; }
+.ib-text > b { display: block; font-size: 15px; margin-bottom: 2px; }
+.ib-text span { display: block; font-size: 13.5px; color: var(--ink-2); line-height: 1.45; }
+.ib-actions { display: flex; flex-direction: column; gap: 6px; }
+.share-ic { width: 18px; height: 18px; vertical-align: -3px; fill: none; stroke: #2b7bd6; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.link-btn { background: none; border: 0; padding: 0; color: var(--accent-ink); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.install-how { font-size: 15px; line-height: 1.5; margin: 0 0 12px; }
+.install-web .btn { margin-bottom: 12px; }
+@media (max-width: 640px) {
+  .install-banner { grid-template-columns: auto 1fr; }
+  .ib-actions { grid-column: 1 / -1; flex-direction: row; }
+  .ib-actions .btn { flex: 1; }
+}
