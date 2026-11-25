@@ -734,3 +734,24 @@ main { padding: clamp(16px, 4vw, 40px); max-width: 1280px; margin: 0 auto; }
   .ib-actions { grid-column: 1 / -1; flex-direction: row; }
   .ib-actions .btn { flex: 1; }
 }
+
+/* ---------- Language Detective ---------- */
+/* Bundled fonts for scripts some devices lack (only downloaded when used) */
+@font-face { font-family: 'WF Script'; src: url(fonts/noto-sans-ethiopic-ethiopic-400-normal.woff2) format('woff2'); unicode-range: U+1200-139F, U+2D80-2DDF, U+AB00-AB2F; font-display: swap; }
+@font-face { font-family: 'WF Script'; src: url(fonts/noto-sans-thaana-thaana-400-normal.woff2) format('woff2'); unicode-range: U+0780-07BF, U+060C, U+061B, U+061F; font-display: swap; }
+@font-face { font-family: 'WF Script'; src: url(fonts/noto-sans-tifinagh-tifinagh-400-normal.woff2) format('woff2'); unicode-range: U+2D30-2D7F; font-display: swap; }
+@font-face { font-family: 'WF Script'; src: url(fonts/noto-serif-tibetan-tibetan-400-normal.woff2) format('woff2'); unicode-range: U+0F00-0FFF; font-display: swap; }
+.lang-text {
+  font-family: 'WF Script', system-ui, -apple-system, 'Segoe UI', 'Noto Sans', sans-serif;
+  font-size: 21px; line-height: 1.7; margin: 0;
+  padding: 20px 22px; border-radius: 12px; background: var(--paper-2);
+  border-left: 4px solid var(--accent);
+  overflow-wrap: anywhere; unicode-bidi: plaintext;
+}
+.lang-text[dir="rtl"] { border-left: 0; border-right: 4px solid var(--accent); }
+.lang-tools { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.lang-tools .btn { padding: 7px 12px; font-size: 13px; }
+.lang-where { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.lang-where span { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 3px 9px 3px 4px; border-radius: 999px; background: var(--paper-2); }
+.lang-where img { width: 20px; height: 15px; object-fit: cover; border-radius: 2px; }
+@media (max-width: 640px) { .lang-text { font-size: 19px; padding: 16px; } }

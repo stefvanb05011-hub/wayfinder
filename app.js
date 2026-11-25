@@ -98,6 +98,8 @@
   const FEATURES = (window.GEO_FEATURES || []).map(f => ({ ...f, kind: 'feature' }));
   const FLAG_COLOURS = window.FLAG_COLOURS || {};
   const FLAG_LAYOUTS = window.FLAG_LAYOUTS || [];
+  const LANGS = (window.GEO_LANGS || []).map(l => ({ ...l, kind: 'lang', where: l.w.map(a => BY_A2.get(a)).filter(Boolean) }));
+  const RTL = /[֐-ࣿ]/;
 
   // Every accepted way of writing each country (ambiguous alternatives are dropped)
   const NAME_INDEX = (() => {
@@ -303,7 +305,7 @@
   }
 
   const Events = {
-    fresh: () => ({ bestStreak: 0, perfect: 0, speedBest: 0, nameBest: 0, nameAll: false, chainPerfect: 0, mystery1: 0, hiloBest: 0, flagPerfect: 0, modes: [] }),
+    fresh: () => ({ bestStreak: 0, perfect: 0, speedBest: 0, nameBest: 0, nameAll: false, chainPerfect: 0, mystery1: 0, hiloBest: 0, flagPerfect: 0, modes: [], langs: [] }),
     data: null,
     max(k, v) { if (v > (this.data[k] || 0)) { this.data[k] = v; this.save(); } },
     inc(k) { this.data[k] = (this.data[k] || 0) + 1; this.save(); },
@@ -342,7 +344,9 @@
     ['hilo10', 'Higher thinking', 'Reach 10 in a row in Higher or Lower', x => x.e.hiloBest >= 10],
     ['flag', 'Flag painter', 'Paint every flag right in a Flag Builder round of 5+', x => x.e.flagPerfect >= 1],
     ['modes10', 'Well-rounded', 'Play 10 different game modes', x => x.e.modes.length >= 10],
-    ['lvl10', 'Seasoned traveller', 'Reach level 10', x => x.level >= 10]
+    ['lvl10', 'Seasoned traveller', 'Reach level 10', x => x.level >= 10],
+    ['lang25', 'Polyglot', 'Recognise 25 different languages in Language Detective', x => (x.e.langs || []).length >= 25],
+    ['langAll', 'Tower of Babel', 'Recognise every language in Language Detective', x => LANGS.length > 0 && new Set(x.e.langs || []).size >= new Set(LANGS.map(l => l.n)).size]
   ];
   const Achievements = {
     got: store.get('achievements', {}),
@@ -631,7 +635,8 @@
     mystery: { ok: () => true, typed: true, timer: false },
     chain: { ok: c => c.nb.length > 0, typed: true, map: true, timer: false, noRecord: true },
     flagBuild: { ok: () => true, custom: true, timer: false },
-    card: { ok: () => true, custom: true, timer: false }
+    card: { ok: () => true, custom: true, timer: false },
+    langGuess: { ok: () => true, typed: true }
   };
 
   const MODES = {
@@ -655,6 +660,7 @@
     currencies: { group: 'topics', type: 'currency', title: 'Currencies', tag: 'Multiple choice', blurb: 'Which money do they use? Euros, pesos, dinars and more.' },
     languages: { group: 'topics', type: 'language', title: 'Languages', tag: 'Multiple choice', blurb: 'Spot an official language of each country.' },
     states: { group: 'topics', type: 'state', title: 'US States', tag: '50 states', allRegions: true, blurb: 'State capitals, both ways round. Ignores the region filter.' },
+    langDetective: { group: 'topics', type: 'langGuess', title: 'Language Detective', tag: 'Type it', blurb: 'A sentence in its own writing system — Japanese, Arabic, Amharic, Thai… Type which language it is.' },
     features: { group: 'learn', type: 'feature', title: 'Rivers, Mountains & Seas', tag: 'Map', allRegions: true, blurb: 'Find the Nile, the Alps, the Sahara, the Caspian Sea and more on the map.' },
     outline: { group: 'learn', type: 'outline', title: 'Country Outlines', tag: 'Hard', blurb: 'Just the shape — no map around it. Which country is it?' },
     cards: { group: 'learn', type: 'card', title: 'Study Cards', tag: 'Flashcards', blurb: 'Flip through flags and capitals. Mark what you knew — it feeds your progress.' },
@@ -684,6 +690,7 @@
     currencies: '<circle cx="12" cy="12" r="8.5"/><path d="M15 8.5c-.7-.9-1.8-1.3-3-1.3-1.7 0-3 1-3 2.3 0 3 6 1.6 6 4.6 0 1.3-1.3 2.4-3 2.4-1.3 0-2.5-.5-3.2-1.4M12 5.5v13"/>',
     languages: '<path d="M4 5h16v10H10l-4 4v-4H4z"/><path d="M8 9h8M8 12h5"/>',
     states: '<path d="M3 7l4-2 4 2 4-2 3 1 3-1v11l-3 1-3-1-4 2-4-2-4 2z"/><path d="M12 9.5l.8 1.7 1.9.3-1.4 1.3.3 1.9-1.6-.9-1.6.9.3-1.9-1.4-1.3 1.9-.3z"/>',
+    langDetective: '<path d="M3 5h9M7.5 3v2M5 5c.5 3 2.5 5.5 5.5 7M10 5c-.6 3.5-3 6.5-6.5 8"/><path d="M12 21l4.5-10L21 21M13.6 17.5h5.8"/>',
     features: '<path d="M2 19l6-10 4 6 3-4 7 8z"/><path d="M3 22c3-1.5 5 1.5 9 0s6 1.5 9 0"/>',
     outline: '<path d="M6 4l5 2 4-1 4 4-1 5 2 4-5 2-4-2-5 2-2-5 2-4z" stroke-dasharray="2.5 2"/>',
     cards: '<rect x="3" y="6" width="13" height="15" rx="2"/><path d="M8 3h11a2 2 0 0 1 2 2v12"/>',
@@ -915,6 +922,10 @@
       return pool.slice(0, lenFor(pool.length)).map(x => ({ ...x, type: 'flagBuild' }));
     }
     if (m.type === 'hilo') return [nextHilo()];
+    if (m.type === 'langGuess') {
+      const pool = shuffle(LANGS.filter(l => l.where.some(c => isActive(c) && (settings.region === 'All' || c.r === settings.region))));
+      return pool.slice(0, lenFor(pool.length)).map(c => ({ c, type: 'langGuess' }));
+    }
     if (mode === 'smart') {
       const base = regionPool();
       return weightedSample(base, lenFor(base.length), c => Progress.weight(c))
@@ -1122,6 +1133,14 @@
         break;
       case 'flagBuild': renderFlagBuild(q); break;
       case 'card': renderCard(q); break;
+      case 'langGuess':
+        ask('Which language is this?');
+        custom(`<p class="lang-text" dir="${RTL.test(c.t) ? 'rtl' : 'ltr'}" lang="${esc(c.tag || '')}">${esc(c.t)}</p>
+          ${c.tag && 'speechSynthesis' in window ? '<div class="lang-tools"><button type="button" class="btn" id="listenBtn">🔊 Listen</button></div>' : ''}`);
+        typed('Type the language…');
+        q.hintLines = [];
+        { const lb = $('#listenBtn'); if (lb) lb.onclick = () => speakLang(c); }
+        break;
     }
     if (!T.typed && !T.noOptions && !T.custom) renderOptions(q);
     startQTimer(q);
@@ -1483,6 +1502,15 @@
     const q = current(), v = els.typeInput.value.trim();
     if (!v) return;
     if (q.type === 'mystery') return mysteryGuess(q, v);
+    if (q.type === 'langGuess') {
+      const guess = v.replace(/\s+(language|taal)$/i, '');
+      const ok = matchesAny(guess, [q.c.n, ...q.c.alt]);
+      els.typeInput.classList.add(ok ? 'correct' : 'wrong');
+      els.typeInput.disabled = true;
+      if (ok) { Events.data.langs = Events.data.langs || []; if (!Events.data.langs.includes(q.c.n)) { Events.data.langs.push(q.c.n); Events.save(); } }
+      const exact = norm(guess) === norm(q.c.n);
+      return resolve(ok, v, q.c.n, ok && !exact ? `Usually called ${q.c.n}.` : '');
+    }
     if (q.type === 'chain') {
       const cur = q.chain[q.chain.length - 1];
       return chainTry(findCountry(v, cur.nb.filter(isActive)) || findCountry(v));
@@ -1499,6 +1527,21 @@
     const q = current();
     if (q.type === 'mystery') { if (!mysteryNextClue(q)) toast('That was the last clue!'); if (!COARSE) els.typeInput.focus(); return; }
     if (q.type === 'chain') return chainHint(q);
+    if (q.type === 'langGuess') {
+      const c = q.c;
+      const local = c.where.filter(x => isActive(x) && (settings.region === 'All' || x.r === settings.region));
+      const steps = [
+        `Written in the <b>${esc(c.s)}</b>.`,
+        `Spoken in <b>${esc((local[0] || c.where[0]).n)}</b>${c.where.length > 1 ? ` and ${c.where.length - 1} other ${c.where.length === 2 ? 'country' : 'countries'}` : ''}.`,
+        `Starts with <b>“${esc(c.n[0])}”</b> and has ${c.n.replace(/[^\p{L}]/gu, '').length} letters.`
+      ];
+      if (q.hintLines.length >= steps.length) { toast('No more hints for this one.'); return; }
+      q.hintLines.push(steps[q.hintLines.length]);
+      game.hints = q.hintLines.length;
+      els.hintText.innerHTML = q.hintLines.join('<br>');
+      if (!COARSE) els.typeInput.focus();
+      return;
+    }
     const word = q.type === 'typeCapital' ? q.c.c : q.c.n;
     game.hints = Math.min(game.hints + 1, word.length);
     let shown = 0;
@@ -1513,6 +1556,25 @@
     if (q.type === 'mystery') { resolve(false, '', q.c.n); q.shown = q.clues.length; drawClues(q); return; }
     resolve(false, '', q.type === 'typeCapital' ? q.c.c : q.c.n);
   };
+
+  // ---------- language detective ----------
+  function langFacts(c) {
+    const shown = c.where.slice(0, 10);
+    return `<span class="fact">Written in the ${esc(c.s)}. Every text says: “All human beings are born free and equal in dignity and rights…”</span>
+      <div class="lang-where">${shown.map(x => `<span><img src="${flagUrl(x)}" alt="">${esc(x.n)}</span>`).join('')}${c.where.length > shown.length ? `<span>+${c.where.length - shown.length} more</span>` : ''}</div>`;
+  }
+  function speakLang(c) {
+    try {
+      const voices = speechSynthesis.getVoices();
+      const base = c.tag.split('-')[0].toLowerCase();
+      const voice = voices.find(v => v.lang.toLowerCase() === c.tag.toLowerCase()) || voices.find(v => v.lang.toLowerCase().split(/[-_]/)[0] === base);
+      if (voices.length && !voice) { toast('Your device has no voice for this language.'); return; }
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(c.t);
+      u.lang = c.tag; if (voice) u.voice = voice; u.rate = 0.95;
+      speechSynthesis.speak(u);
+    } catch (e) { toast('Listening isn’t available on this device.'); }
+  }
 
   // ---------- resolving an answer ----------
   function factChips(c) {
@@ -1558,6 +1620,7 @@
     if (extra) html += `<span class="fact">${esc(extra)}</span>`;
     if (q.c.kind === 'state') html += `<span class="fact">${esc(q.c.n)} · capital ${esc(q.c.c)}</span>`;
     if (q.c.kind === 'feature') html += `<span class="fact">${FEATURE_KIND[q.c.t]}</span>`;
+    if (q.c.kind === 'lang') html += langFacts(q.c);
     if (q.type !== 'card' && q.type !== 'hilo') html += factChips(q.c);
     els.feedback.innerHTML = html;
     els.next.hidden = false;
@@ -1668,6 +1731,9 @@
     $('#rMistakes').innerHTML = list.length
       ? list.map(m => {
         const c = m.c;
+        if (c.kind === 'lang') {
+          return `<li><span class="mk-icon"><svg viewBox="0 0 24 24">${ICONS.langDetective}</svg></span><div><b>${esc(c.n)}</b><span>${esc(c.s)}${m.given ? ` · <span class="you">you said ${esc(m.given)}</span>` : ''} · spoken in ${esc(c.where.slice(0, 3).map(x => x.n).join(', '))}${c.where.length > 3 ? '…' : ''}</span></div></li>`;
+        }
         if (c.kind === 'feature') {
           return `<li><span class="mk-icon"><svg viewBox="0 0 24 24">${ICONS.features}</svg></span><div><b>${esc(c.n)}</b><span>${FEATURE_KIND[c.t]}${m.given ? ` · <span class="you">you were ${esc(m.given)}</span>` : ''}</span></div></li>`;
         }
