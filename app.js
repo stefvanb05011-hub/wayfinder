@@ -2197,7 +2197,18 @@
   renderHome();
   setTimeout(() => MapView.load().catch(() => {}), 30);
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+      .then(reg => { reg.update().catch(() => {}); })
+      .catch(() => {});
+    // A new version finished downloading: reload into it (but never in the middle of a game)
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloaded) return;
+      const go = () => { if (reloaded) return; reloaded = true; location.reload(); };
+      if (!document.body.classList.contains('in-game')) { toast('Wayfinder was updated — loading the new version…'); setTimeout(go, 1200); }
+      else { toast('An update is ready — it will load when you go back to the home screen.'); $('#brandBtn').addEventListener('click', go, { once: true }); $('#quitBtn').addEventListener('click', go, { once: true }); }
+    });
   }
   // First visit: offer to install (Chrome/Edge show it as soon as the browser says it can install)
   setTimeout(() => Install.showBanner(), 2500);
