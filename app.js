@@ -100,6 +100,29 @@
   const FLAG_LAYOUTS = window.FLAG_LAYOUTS || [];
   const LANGS = (window.GEO_LANGS || []).map(l => ({ ...l, kind: 'lang', where: l.w.map(a => BY_A2.get(a)).filter(Boolean) }));
   const RTL = /[֐-ࣿ]/;
+  const LANDMARKS = (window.GEO_LANDMARKS || []).map(([n, place, a2, lon, lat]) => ({ kind: 'landmark', n, place, a2, ll: [lon, lat], country: BY_A2.get(a2) })).filter(l => l.country);
+
+  // World Tour: 6 regions × 5 stages, unlocked in order
+  const TOUR_REGIONS = ['Europe', 'Africa', 'Asia', 'North America', 'South America', 'Oceania'];
+  const TOUR_HUBS = { 'Europe': [10, 50], 'Africa': [20, 3], 'Asia': [95, 33], 'North America': [-100, 45], 'South America': [-60, -15], 'Oceania': [140, -25] };
+  const TOUR_STAGES = [
+    { name: 'Flags', types: ['flag'] },
+    { name: 'Capitals', types: ['capital'] },
+    { name: 'On the map', types: ['locate'] },
+    { name: 'Shapes & cities', types: ['identify', 'capitalClick', 'country'] },
+    { name: 'Final exam', types: ['typeCountry', 'typeCapital', 'locate', 'flagZoom'], hard: true }
+  ];
+  const TOUR_TOTAL = TOUR_REGIONS.length * TOUR_STAGES.length * 3;
+
+  // Map styles, unlocked by level
+  const MAP_STYLES = [
+    ['classic', 'Classic', 1, '#cfe0e6', '#efe7d6'],
+    ['vintage', 'Vintage parchment', 3, '#d8c49b', '#f1e3c4'],
+    ['atlas', 'School atlas', 6, '#9fd0ea', '#cfe5ad'],
+    ['night', 'Night satellite', 10, '#050f1e', '#1c2d42'],
+    ['neon', 'Neon', 15, '#0b0420', '#1a0b3a'],
+    ['gold', 'Gold edition', 20, '#151515', '#2c2617']
+  ];
 
   // Every accepted way of writing each country (ambiguous alternatives are dropped)
   const NAME_INDEX = (() => {
@@ -134,7 +157,7 @@
   // Settings, sound, theme, confetti
   // =====================================================================
   const settings = Object.assign(
-    { region: 'All', length: 10, difficulty: 'normal', timer: 0, muted: false, excluded: [], theme: document.documentElement.dataset.theme || 'light' },
+    { region: 'All', length: 10, difficulty: 'normal', timer: 0, muted: false, excluded: [], mapStyle: 'classic', theme: document.documentElement.dataset.theme || 'light' },
     store.get('settings', {})
   );
   const saveSettings = () => store.set('settings', settings);
@@ -245,6 +268,11 @@
         s.s++;
         if (ok) { s.c++; s.b = Math.min(s.b + 1, 5); } else s.b = 0;
         s.t = Date.now();
+        // First time mastered → passport stamp
+        if (s.b >= 3 && !s.m) {
+          s.m = Date.now();
+          setTimeout(() => { toast(`New passport stamp: ${c.n}!`); Sound.play('soft'); }, 400);
+        }
       }
       this.save();
     },
@@ -263,7 +291,7 @@
     reset() {
       store.clearAll();
       this.data = {}; this.totals = { answered: 0, correct: 0, games: 0 }; this.save();
-      XP.total = 0; Events.data = Events.fresh(); Achievements.got = {};
+      XP.total = 0; Events.data = Events.fresh(); Achievements.got = {}; Tour.reset(); applyMapStyle();
       renderXpPill();
     }
   };
@@ -292,6 +320,7 @@
       const after = this.info().lvl;
       renderXpPill();
       if (after > before) {
+        MAP_STYLES.filter(([, , lv]) => lv > before && lv <= after).forEach(([, name]) => toast(`New map style unlocked: ${name} — pick it in Settings`));
         toast(`Level up! You’re now level ${after} — ${this.title(after)}`);
         Sound.play('streak'); Confetti.burst(80);
         Achievements.check();
@@ -305,7 +334,7 @@
   }
 
   const Events = {
-    fresh: () => ({ bestStreak: 0, perfect: 0, speedBest: 0, nameBest: 0, nameAll: false, chainPerfect: 0, mystery1: 0, hiloBest: 0, flagPerfect: 0, modes: [], langs: [] }),
+    fresh: () => ({ bestStreak: 0, perfect: 0, speedBest: 0, nameBest: 0, nameAll: false, chainPerfect: 0, mystery1: 0, hiloBest: 0, flagPerfect: 0, modes: [], langs: [], bullseye: 0 }),
     data: null,
     max(k, v) { if (v > (this.data[k] || 0)) { this.data[k] = v; this.save(); } },
     inc(k) { this.data[k] = (this.data[k] || 0) + 1; this.save(); },
@@ -346,7 +375,11 @@
     ['modes10', 'Well-rounded', 'Play 10 different game modes', x => x.e.modes.length >= 10],
     ['lvl10', 'Seasoned traveller', 'Reach level 10', x => x.level >= 10],
     ['lang25', 'Polyglot', 'Recognise 25 different languages in Language Detective', x => (x.e.langs || []).length >= 25],
-    ['langAll', 'Tower of Babel', 'Recognise every language in Language Detective', x => LANGS.length > 0 && new Set(x.e.langs || []).size >= new Set(LANGS.map(l => l.n)).size]
+    ['langAll', 'Tower of Babel', 'Recognise every language in Language Detective', x => LANGS.length > 0 && new Set(x.e.langs || []).size >= new Set(LANGS.map(l => l.n)).size],
+    ['bullseye', 'Bullseye', 'Click within 50 km of a landmark in Landmark Hunt', x => (x.e.bullseye || 0) >= 1],
+    ['tour1', 'Bon voyage', 'Finish your first World Tour stage', () => Tour.stars() >= 1],
+    ['tourAll', 'Around the world', 'Earn at least one star on every World Tour stage', () => Tour.allDone()],
+    ['tour90', 'Five-star traveller', `Earn all ${TOUR_TOTAL} stars in the World Tour`, () => Tour.stars() >= TOUR_TOTAL]
   ];
   const Achievements = {
     got: store.get('achievements', {}),
@@ -370,6 +403,32 @@
   // =====================================================================
   // Map
   // =====================================================================
+  // Countries mastered before passports existed get their stamp dated to their last answer
+  Object.values(Progress.data).forEach(s => { if (s.b >= 3 && !s.m) s.m = s.t || Date.now(); });
+
+  // ---------- World Tour progress ----------
+  const Tour = {
+    data: store.get('tour', {}),
+    key: (r, i) => `${TOUR_REGIONS[r]}-${i}`,
+    starsOf(r, i) { return this.data[this.key(r, i)] || 0; },
+    regionStars(r) { return TOUR_STAGES.reduce((a, _, i) => a + this.starsOf(r, i), 0); },
+    regionDone(r) { return TOUR_STAGES.every((_, i) => this.starsOf(r, i) >= 1); },
+    regionOpen(r) { return r === 0 || this.regionDone(r - 1); },
+    stageOpen(r, i) { return this.regionOpen(r) && (i === 0 || this.starsOf(r, i - 1) >= 1); },
+    stars() { return Object.values(this.data).reduce((a, b) => a + b, 0); },
+    allDone() { return TOUR_REGIONS.every((_, r) => this.regionDone(r)); },
+    current() {
+      for (let r = 0; r < TOUR_REGIONS.length; r++) for (let i = 0; i < TOUR_STAGES.length; i++) if (this.stageOpen(r, i) && this.starsOf(r, i) === 0) return [r, i];
+      return null;
+    },
+    save(r, i, stars) {
+      const k = this.key(r, i), before = this.data[k] || 0;
+      if (stars > before) { this.data[k] = stars; store.set('tour', this.data); }
+      return before;
+    },
+    reset() { this.data = {}; }
+  };
+
   const POINTS = { tv: [179.2, -8.52] }; // [lon, lat] for countries the map file has no shape for
   const COARSE = matchMedia('(pointer: coarse)').matches;
   const MARKER_R = COARSE ? 7 : 4;
@@ -547,6 +606,17 @@
         });
       }
     },
+    drawPoint(ll, cls = 'fx-target') {
+      const [x, y] = this.projection(ll);
+      this.fx.append('circle').attr('class', cls).attr('cx', x).attr('cy', y).attr('r', 5 / Math.sqrt(this.k));
+    },
+    drawLine(a, b, cls = 'fx-link') {
+      this.fx.insert('path', ':first-child').attr('class', cls).attr('d', this.path({ type: 'LineString', coordinates: [a, b] }));
+    },
+    pointsBounds(lls, pad = 30) {
+      const xy = lls.map(p => this.projection(p));
+      return [[Math.min(...xy.map(p => p[0])) - pad, Math.min(...xy.map(p => p[1])) - pad], [Math.max(...xy.map(p => p[0])) + pad, Math.max(...xy.map(p => p[1])) + pad]];
+    },
     featureBounds(f) {
       const xy = f.pts.map(p => this.projection(p));
       const pad = f.t === 'water' || f.t === 'desert' ? 60 : 25;
@@ -636,7 +706,11 @@
     chain: { ok: c => c.nb.length > 0, typed: true, map: true, timer: false, noRecord: true },
     flagBuild: { ok: () => true, custom: true, timer: false },
     card: { ok: () => true, custom: true, timer: false },
-    langGuess: { ok: () => true, typed: true }
+    langGuess: { ok: () => true, typed: true },
+    landmark: { ok: () => true, map: true, noOptions: true, noRecord: true },
+    oddOne: { ok: () => true, custom: true, noRecord: true },
+    closer: { ok: c => !!c.cap, map: true, custom: true, noRecord: true },
+    flagZoom: { ok: () => true }
   };
 
   const MODES = {
@@ -660,6 +734,12 @@
     currencies: { group: 'topics', type: 'currency', title: 'Currencies', tag: 'Multiple choice', blurb: 'Which money do they use? Euros, pesos, dinars and more.' },
     languages: { group: 'topics', type: 'language', title: 'Languages', tag: 'Multiple choice', blurb: 'Spot an official language of each country.' },
     states: { group: 'topics', type: 'state', title: 'US States', tag: '50 states', allRegions: true, blurb: 'State capitals, both ways round. Ignores the region filter.' },
+    tour: { group: 'tour', title: 'World Tour', tag: 'Campaign', blurb: 'Travel the world region by region.' },
+    flagZoom: { group: 'classic', type: 'flagZoom', title: 'Flag Zoom', tag: 'Zoom', blurb: 'A flag, zoomed way in. It slowly zooms out — guess early for more points.' },
+    landmarks: { group: 'map', type: 'landmark', title: 'Landmark Hunt', tag: 'Map', blurb: 'Click where famous places are — the Eiffel Tower, Machu Picchu, Angkor Wat… Closer means more points.' },
+    oddOne: { group: 'play', type: 'oddOne', title: 'Odd One Out', tag: 'Logic', blurb: 'Four countries — one doesn’t belong. Landlocked? Uses the euro? Spot the odd one.' },
+    closer: { group: 'play', type: 'closer', title: 'Which Is Closer?', tag: 'Distances', blurb: 'Which capital is closer? Which is further north? Trickier than you think.' },
+    passport: { group: 'study', title: 'Passport', tag: 'Stamps', blurb: 'Collect a stamp for every country you master. Fill the whole book.' },
     langDetective: { group: 'topics', type: 'langGuess', title: 'Language Detective', tag: 'Type it', blurb: 'A sentence in its own writing system — Japanese, Arabic, Amharic, Thai… Type which language it is.' },
     features: { group: 'learn', type: 'feature', title: 'Rivers, Mountains & Seas', tag: 'Map', allRegions: true, blurb: 'Find the Nile, the Alps, the Sahara, the Caspian Sea and more on the map.' },
     outline: { group: 'learn', type: 'outline', title: 'Country Outlines', tag: 'Hard', blurb: 'Just the shape — no map around it. Which country is it?' },
@@ -691,6 +771,12 @@
     languages: '<path d="M4 5h16v10H10l-4 4v-4H4z"/><path d="M8 9h8M8 12h5"/>',
     states: '<path d="M3 7l4-2 4 2 4-2 3 1 3-1v11l-3 1-3-1-4 2-4-2-4 2z"/><path d="M12 9.5l.8 1.7 1.9.3-1.4 1.3.3 1.9-1.6-.9-1.6.9.3-1.9-1.4-1.3 1.9-.3z"/>',
     langDetective: '<path d="M3 5h9M7.5 3v2M5 5c.5 3 2.5 5.5 5.5 7M10 5c-.6 3.5-3 6.5-6.5 8"/><path d="M12 21l4.5-10L21 21M13.6 17.5h5.8"/>',
+    tour: '<path d="M2 16c3-6 6-9 10-9s6 4 10 2"/><circle cx="2.5" cy="16" r="1.5"/><path d="M19 4l3 2-3 2M22 6h-6"/><circle cx="12" cy="7" r="1.5"/>',
+    flagZoom: '<circle cx="10" cy="10" r="6.5"/><path d="M20.5 20.5l-5.8-5.8M7.5 7.5v5M7.5 7.5h5l-1 1.5 1 1.5h-5"/>',
+    landmarks: '<path d="M12 2l1.2 4h-2.4zM10.5 6h3l1.5 9h-6zM8 15h8l1.5 6h-11zM10 11h4"/>',
+    oddOne: '<circle cx="6" cy="7" r="3"/><circle cx="18" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><rect x="15" y="14" width="6" height="6" rx="1"/>',
+    closer: '<circle cx="12" cy="12" r="2"/><circle cx="4" cy="6" r="1.8"/><circle cx="20" cy="18" r="1.8"/><path d="M5.5 7.2l5 3.5M13.6 13.3l5 3.5" stroke-dasharray="2 2"/>',
+    passport: '<rect x="4.5" y="2.5" width="15" height="19" rx="2"/><circle cx="12" cy="10" r="3.5"/><path d="M8.5 10h7M12 6.5c1.3 1 1.3 6 0 7M12 6.5c-1.3 1-1.3 6 0 7M8.5 17h7"/>',
     features: '<path d="M2 19l6-10 4 6 3-4 7 8z"/><path d="M3 22c3-1.5 5 1.5 9 0s6 1.5 9 0"/>',
     outline: '<path d="M6 4l5 2 4-1 4 4-1 5 2 4-5 2-4-2-5 2-2-5 2-4z" stroke-dasharray="2.5 2"/>',
     cards: '<rect x="3" y="6" width="13" height="15" rx="2"/><path d="M8 3h11a2 2 0 0 1 2 2v12"/>',
@@ -708,7 +794,7 @@
   // State & elements
   // =====================================================================
   let game = null;
-  let advanceTimer = null, clockTimer = null, qTimer = null;
+  let advanceTimer = null, clockTimer = null, qTimer = null, zoomTimer = null;
   const els = {
     hud: $('#hud'), hudQ: $('#hudQ'), hudQLabel: $('#hudQLabel'), hudScore: $('#hudScore'), hudStreak: $('#hudStreak'), hudStreakWrap: $('#hudStreakWrap'),
     quiz: $('#quiz'), progress: $('#progressBar'),
@@ -722,7 +808,7 @@
   };
 
   function stopQTimer() { clearInterval(qTimer); qTimer = null; els.qTimerBar.hidden = true; }
-  function stopTimers() { clearTimeout(advanceTimer); clearInterval(clockTimer); advanceTimer = clockTimer = null; stopQTimer(); }
+  function stopTimers() { clearTimeout(advanceTimer); clearInterval(clockTimer); clearInterval(zoomTimer); advanceTimer = clockTimer = zoomTimer = null; stopQTimer(); }
   function showScreen(id, { hud = false } = {}) {
     $$('.screen').forEach(s => s.classList.toggle('active', s.id === id));
     els.hud.hidden = !hud;
@@ -761,6 +847,7 @@
     if (id === 'progress') return `<b>${ACTIVE.filter(c => Progress.level(c) === 3).length}</b> of ${ACTIVE.length} countries mastered`;
     if (id === 'profile') return `<b>${Object.keys(Achievements.got).length}</b> of ${ACHIEVEMENTS.length} unlocked · level ${XP.info().lvl}`;
     if (id === 'cards') return 'No score — mark what you know';
+    if (id === 'passport') return `<b>${ACTIVE.filter(c => Progress.data[c.a2] && Progress.data[c.a2].m).length}</b> of ${ACTIVE.length} stamps collected`;
     const b = store.get(bestKey(id), null);
     if (!b) return 'Not played yet';
     const where = MODES[id].allRegions || settings.region === 'All' ? '' : ` in ${settings.region}`;
@@ -816,6 +903,16 @@
       </span>
       <span class="daily-side"><b>${ds.count}</b><small>day streak${ds.best > 1 ? ` · best ${ds.best}` : ''}</small></span>
     </button>`;
+
+    const cur = Tour.current();
+    $('#dailyCard').insertAdjacentHTML('beforeend', `<button class="daily-card tour-card" data-mode="tour">
+      <span class="mode-icon"><svg viewBox="0 0 24 24">${ICONS.tour}</svg></span>
+      <span>
+        <span class="daily-title">World Tour</span>
+        <span class="daily-sub">${cur ? `Next stop: ${TOUR_REGIONS[cur[0]]} · stage ${cur[1] + 1} “${TOUR_STAGES[cur[1]].name}”` : 'Every stage cleared — go back for 3 stars everywhere!'}</span>
+      </span>
+      <span class="daily-side"><b>${Tour.stars()}</b><small>of ${TOUR_TOTAL} stars</small></span>
+    </button>`);
 
     $('#modeGroups').innerHTML = GROUPS.map(([g, label]) => `
       <div class="group">
@@ -922,6 +1019,19 @@
       return pool.slice(0, lenFor(pool.length)).map(x => ({ ...x, type: 'flagBuild' }));
     }
     if (m.type === 'hilo') return [nextHilo()];
+    if (m.type === 'landmark') {
+      const pool = shuffle(LANDMARKS.filter(l => isActive(l.country) && (settings.region === 'All' || l.country.r === settings.region)));
+      return pool.slice(0, lenFor(pool.length)).map(c => ({ c, type: 'landmark' }));
+    }
+    if (m.type === 'oddOne' || m.type === 'closer') {
+      const make = m.type === 'oddOne' ? makeOddOne : makeCloser;
+      const n = settings.length === 'all' ? 30 : settings.length, out = [], seen = new Set();
+      for (let guard = 0; out.length < n && guard < 600; guard++) {
+        const q = make();
+        if (q && !seen.has(q.key) && !out.some(o => o.c === q.c)) { seen.add(q.key); out.push(q); }
+      }
+      return out;
+    }
     if (m.type === 'langGuess') {
       const pool = shuffle(LANGS.filter(l => l.where.some(c => isActive(c) && (settings.region === 'All' || c.r === settings.region))));
       return pool.slice(0, lenFor(pool.length)).map(c => ({ c, type: 'langGuess' }));
@@ -945,6 +1055,74 @@
     const n = m.short ? shortLen(pool.length) : lenFor(pool.length);
     if (m.type === 'card') return weightedSample(pool, n, c => Progress.weight(c)).map(c => ({ c, type: 'card' }));
     return pool.slice(0, n).map(c => ({ c, type: m.type }));
+  }
+
+  // ---------- Odd One Out ----------
+  const listAnd = arr => arr.length > 1 ? `${arr.slice(0, -1).join(', ')} and ${arr[arr.length - 1]}` : arr.join('');
+  const ODD_PROPS = [
+    { id: 'land', test: c => c.land, yes: 'are landlocked', no: 'has a coastline' },
+    { id: 'island', test: c => !c.land && c.nb.length === 0, yes: 'are island nations with no land borders', no: 'has land borders' },
+    { id: 'euro', test: c => c.cur.includes('Euro'), yes: 'use the euro', no: 'doesn’t use the euro' },
+    ...['Spanish', 'French', 'English', 'Arabic', 'Portuguese', 'German', 'Russian'].map(L => ({
+      id: 'lang' + L, test: c => c.langs.includes(L), yes: `have ${L} as an official language`, no: `doesn’t have ${L} as an official language`
+    })),
+    { id: 'big', test: c => c.pop > 1e8, yes: 'have more than 100 million people', no: 'has fewer than 100 million people', needs: c => !!c.pop },
+    { id: 'south', test: c => c.cap[1] < 0, yes: 'have their capital in the Southern Hemisphere', no: 'has its capital in the Northern Hemisphere', needs: c => !!c.cap },
+    { id: 'region', region: true },
+    { id: 'border', border: true }
+  ];
+  function makeOddOne() {
+    const base = regionPool();
+    const P = pick(ODD_PROPS.filter(p => !(p.region && settings.region !== 'All')));
+    let test, yes, no, hub = null, pool = base;
+    if (P.region) {
+      const r = pick(REGIONS.slice(1));
+      test = c => c.r === r; yes = `are in ${r}`; pool = ACTIVE;
+    } else if (P.border) {
+      hub = pick(base.filter(c => c.nb.filter(isActive).length >= 4));
+      if (!hub) return null;
+      test = c => hub.nb.includes(c); yes = `border ${hub.n}`; no = `doesn’t border ${hub.n}`;
+      pool = ACTIVE.filter(c => c !== hub && (c.r === hub.r || hub.nb.includes(c)));
+    } else { test = P.test; yes = P.yes; no = P.no; }
+    if (P.needs) pool = pool.filter(P.needs);
+    const T = pool.filter(test), F = pool.filter(c => !test(c));
+    if (T.length < 3 || !F.length) return null;
+    const three = shuffle(T).slice(0, 3);
+    let Fp = F;
+    if (P.border) { const near = F.filter(c => c.nb.some(x => hub.nb.includes(x))); if (near.length) Fp = near; }
+    else if (settings.difficulty !== 'easy' && !P.region) { const regs = new Set(three.map(c => c.r)); const same = F.filter(c => regs.has(c.r)); if (same.length) Fp = same; }
+    const odd = pick(Fp);
+    return {
+      type: 'oddOne', c: odd, group: shuffle([...three, odd]), key: P.id + odd.a2,
+      explain: `${listAnd(three.map(c => c.n))} ${yes} — ${odd.n} ${P.region ? `is in ${odd.r}` : no}.`
+    };
+  }
+
+  // ---------- Which Is Closer? ----------
+  const fmtLat = c => `${Math.abs(c.cap[1]).toFixed(1)}°${c.cap[1] >= 0 ? 'N' : 'S'}`;
+  function makeCloser() {
+    const base = regionPool().filter(c => c.cap);
+    if (rand() < 0.55) {
+      const ref = pick(base);
+      if (!ref) return null;
+      const cands = shuffle((settings.region === 'All' ? ACTIVE : base).filter(c => c.cap && c !== ref))
+        .map(c => ({ c, d: haversine(ref.cap, c.cap) })).filter(x => x.d < 7000);
+      for (let i = 0; i < cands.length - 1; i++) {
+        for (let j = i + 1; j < Math.min(cands.length, i + 8); j++) {
+          const A = cands[i], B = cands[j], ratio = Math.min(A.d, B.d) / Math.max(A.d, B.d);
+          if (ratio > 0.4 && ratio < 0.85) {
+            const near = A.d < B.d ? A : B;
+            return { type: 'closer', kind: 'dist', ref, a: A.c, b: B.c, c: near.c, da: A.d, db: B.d, key: 'd' + ref.a2 + [A.c.a2, B.c.a2].sort().join('') };
+          }
+        }
+      }
+      return null;
+    }
+    const a = pick(base);
+    if (!a) return null;
+    const b = pick((settings.region === 'All' ? ACTIVE : base).filter(c => c.cap && c !== a && Math.abs(c.cap[1] - a.cap[1]) >= 1.5 && Math.abs(c.cap[1] - a.cap[1]) <= 12));
+    if (!b) return null;
+    return { type: 'closer', kind: 'north', a, b, c: a.cap[1] > b.cap[1] ? a : b, key: 'n' + [a.a2, b.a2].sort().join('') };
   }
 
   function nextTimedQuestion() {
@@ -975,7 +1153,7 @@
     let correct, cands, label, exclude = [];
     switch (type) {
       case 'capital': correct = c.c; cands = ACTIVE.filter(x => x !== c && x.c); label = x => x.c; break;
-      case 'country': case 'flag': case 'identify': case 'outline':
+      case 'country': case 'flag': case 'identify': case 'outline': case 'flagZoom':
         correct = c.n; cands = ACTIVE.filter(x => x !== c); label = x => x.n; break;
       case 'neighbour':
         q.answer = q.answer || pick(c.nb.filter(isActive));
@@ -1011,15 +1189,18 @@
     if (mode === 'progress') return showProgress();
     if (mode === 'profile') return showProfile();
     if (mode === 'nameall') return startNameAll();
+    if (mode === 'passport') return showPassport();
+    if (mode === 'tour' && !preset) return showTour();
     try { await MapView.load(); } catch (e) { /* map-free modes still work */ }
 
     const m = MODES[mode];
+    const tour = preset && preset.tour ? preset.tour : null;
     const timed = !preset && m.timed ? m.timed : 0;
     const questions = preset ? preset.questions : timed ? [] : buildQuestions(mode);
     game = {
       mode, questions, i: 0, score: 0, streak: 0, bestStreak: 0, correct: 0, answered: false, mistakes: [],
-      start: Date.now(), practice: !!preset, timed, endless: !preset && !!m.endless,
-      difficulty: mode === 'daily' ? 'normal' : settings.difficulty,
+      start: Date.now(), practice: !!preset && !tour, tour, timed, endless: !preset && !!m.endless,
+      difficulty: mode === 'daily' ? 'normal' : tour ? (TOUR_STAGES[tour.i].hard ? 'hard' : 'normal') : settings.difficulty,
       daily: mode === 'daily' && !preset && !store.get('daily:' + dayKey())
     };
     if (timed) {
@@ -1031,7 +1212,7 @@
 
     Progress.totals.games++; Progress.save();
     MapView.prepare($('#quizMapSlot'));
-    MapView.resetView(m.allRegions || mode === 'daily' ? 'All' : settings.region);
+    MapView.resetView(tour ? TOUR_REGIONS[tour.r] : m.allRegions || mode === 'daily' ? 'All' : settings.region);
     setPanel('quiz');
     els.quiz.dataset.bar = timed || game.endless ? 'off' : 'on';
     showScreen('quiz', { hud: true });
@@ -1070,6 +1251,8 @@
   function renderQuestion() {
     const q = current(), c = q.c, T = TYPES[q.type];
     game.answered = false; game.hints = 0;
+    delete q.basePts;
+    clearInterval(zoomTimer);
     stopQTimer();
     updateHud();
     els.quiz.dataset.map = String(!!T.map);
@@ -1115,7 +1298,7 @@
       case 'capitalClick':
         ask('Click the capital city of', c.n);
         MapView.resetView(MapView.region || 'All');
-        MapView.showCaps(game.mode === 'capitalClick' ? regionPool() : ACTIVE);
+        MapView.showCaps(game.tour ? ACTIVE.filter(x => x.r === TOUR_REGIONS[game.tour.r]) : game.mode === 'capitalClick' ? regionPool() : ACTIVE);
         MapView.onCapital = answerCapital;
         break;
       case 'outline': ask('Which country has this shape?'); custom(`<div class="outline-frame">${outlineSvg(c)}</div>`); break;
@@ -1133,6 +1316,33 @@
         break;
       case 'flagBuild': renderFlagBuild(q); break;
       case 'card': renderCard(q); break;
+      case 'landmark':
+        ask('Click on the map: where is', c.n + '?');
+        MapView.resetView(MapView.region || 'All');
+        MapView.onPoint = answerLandmark;
+        break;
+      case 'oddOne':
+        ask('Which one is the odd one out?');
+        renderOptions(q, { correct: c.n, options: q.group.map(x => x.n) });
+        break;
+      case 'closer': {
+        const lab = x => `${x.c} (${x.n})`;
+        if (q.kind === 'dist') { ask('Which capital is closer to', `${q.ref.c}?`); MapView.drawPoint(q.ref.cap, 'fx-target'); }
+        else ask('Which capital is further north?');
+        els.custom.hidden = false;
+        els.custom.innerHTML = q.kind === 'dist' ? `<p class="clue-meta">${esc(q.ref.c)} is the capital of ${esc(q.ref.n)}. Distances are measured in a straight line.</p>` : '<p class="clue-meta">Compare where the two capital cities lie.</p>';
+        renderOptions(q, { correct: lab(c), options: shuffle([lab(q.a), lab(q.b)]) });
+        break;
+      }
+      case 'flagZoom':
+        ask('Whose flag is this?');
+        q.step = 0;
+        q.origin = q.origin || [18 + Math.random() * 64, 18 + Math.random() * 64];
+        custom(`<div class="zoom-frame"><img id="zoomImg" src="${flagUrl(c)}" alt="Zoomed-in flag" style="transform-origin:${q.origin[0]}% ${q.origin[1]}%;transform:scale(${ZOOM_STEPS[0]})"></div>
+          <div class="zoom-bar"><span id="zoomPts">Worth ${ZOOM_PTS[0]} points</span><button type="button" class="btn small" id="zoomOutBtn">Zoom out</button></div>`);
+        $('#zoomOutBtn').onclick = () => zoomStep(q);
+        zoomTimer = setInterval(() => zoomStep(q), 3500);
+        break;
       case 'langGuess':
         ask('Which language is this?');
         custom(`<p class="lang-text" dir="${RTL.test(c.t) ? 'rtl' : 'ltr'}" lang="${esc(c.tag || '')}">${esc(c.t)}</p>
@@ -1176,6 +1386,9 @@
     if (q.type === 'capitalClick') { q.c.capEl.classList.add('correct'); MapView.zoomToPoint(q.c.capXY); }
     if (q.type === 'feature') { MapView.drawFeature(q.c, true); MapView.zoomToBounds(MapView.featureBounds(q.c), 6, 0.7); }
     if (q.type === 'hilo') revealHilo(q);
+    if (q.type === 'landmark') { MapView.drawPoint(q.c.ll, 'fx-target'); MapView.zoomToBounds(MapView.pointsBounds([q.c.ll], 40), 6, 0.6); }
+    if (q.type === 'closer') drawCloser(q);
+    if (q.type === 'flagZoom') zoomStep(q, true);
     resolve(false, '', expectedFor(q), 'Time’s up!');
   }
 
@@ -1215,6 +1428,9 @@
     if (q.type === 'language' && q.c.langs.length > 1) extra = `Official languages: ${q.c.langs.join(', ')}.`;
     if (q.type === 'currency' && q.c.cur.length > 1) extra = `Currencies used: ${q.c.cur.join(', ')}.`;
     if (q.type === 'hilo') { revealHilo(q); extra = hiloExtra(q); }
+    if (q.type === 'oddOne') extra = q.explain;
+    if (q.type === 'closer') { drawCloser(q); extra = closerExplain(q); }
+    if (q.type === 'flagZoom') { if (ok) q.basePts = ZOOM_PTS[q.step]; zoomStep(q, true); }
     if (q.type === 'card') { resolve(ok, '', q.c.n); return; }
     resolve(ok, label, q.correctLabel, extra);
   }
@@ -1557,6 +1773,55 @@
     resolve(false, '', q.type === 'typeCapital' ? q.c.c : q.c.n);
   };
 
+  // ---------- landmark hunt ----------
+  function answerLandmark(ll) {
+    if (!game || game.answered) return;
+    const q = current(), L = q.c;
+    const d = haversine(ll, L.ll), km = (Math.round(d / 10) * 10).toLocaleString('en-US');
+    const ok = d <= 400;
+    q.basePts = ok ? (d <= 50 ? 100 : Math.round(100 - (d - 50) / 350 * 60)) : 0;
+    if (d <= 50) Events.inc('bullseye');
+    MapView.drawLine(ll, L.ll, 'fx-link ' + (ok ? 'good' : 'bad'));
+    MapView.drawClick(ll);
+    MapView.drawPoint(L.ll, 'fx-target');
+    MapView.zoomToBounds(MapView.pointsBounds([ll, L.ll], 40), 8, 0.7);
+    const verdict = ok ? (d <= 50 ? 'Bullseye!' : `About ${km} km off — close enough.`) : `You were about ${km} km away.`;
+    resolve(ok, ok ? '' : `${km} km away`, L.n, `${verdict} It’s in ${L.place}, ${L.country.n}.`);
+  }
+
+  // ---------- which is closer ----------
+  function drawCloser(q) {
+    if (q.drawn) return;
+    q.drawn = true;
+    if (q.kind === 'dist') {
+      [q.a, q.b].forEach(x => { MapView.drawLine(q.ref.cap, x.cap, 'fx-link ' + (x === q.c ? 'good' : 'bad')); MapView.drawPoint(x.cap, 'fx-click'); });
+      MapView.drawPoint(q.ref.cap, 'fx-target');
+      MapView.zoomToBounds(MapView.pointsBounds([q.ref.cap, q.a.cap, q.b.cap], 40), 8, 0.8);
+    } else {
+      [q.a, q.b].forEach(x => {
+        MapView.drawLine([x.cap[0] - 25, x.cap[1]], [x.cap[0] + 25, x.cap[1]], 'fx-link lat ' + (x === q.c ? 'good' : 'bad'));
+        MapView.drawPoint(x.cap, x === q.c ? 'fx-target' : 'fx-click');
+      });
+      MapView.zoomToBounds(MapView.pointsBounds([q.a.cap, q.b.cap], 60), 6, 0.8);
+    }
+  }
+  function closerExplain(q) {
+    const km = d => (Math.round(d / 10) * 10).toLocaleString('en-US');
+    return q.kind === 'dist'
+      ? `${q.a.c} is ${km(q.da)} km from ${q.ref.c}; ${q.b.c} is ${km(q.db)} km.`
+      : `${q.a.c} lies at ${fmtLat(q.a)}, ${q.b.c} at ${fmtLat(q.b)}.`;
+  }
+
+  // ---------- flag zoom ----------
+  const ZOOM_STEPS = [7, 4, 2.2, 1], ZOOM_PTS = [100, 75, 50, 30];
+  function zoomStep(q, toEnd = false) {
+    if (!game || current() !== q) return;
+    q.step = toEnd ? 3 : Math.min(3, q.step + 1);
+    const img = $('#zoomImg'); if (img) img.style.transform = `scale(${ZOOM_STEPS[q.step]})`;
+    const pts = $('#zoomPts'); if (pts) pts.textContent = toEnd ? '' : `Worth ${ZOOM_PTS[q.step]} points`;
+    if (q.step === 3 || toEnd) { clearInterval(zoomTimer); const b = $('#zoomOutBtn'); if (b) b.hidden = true; }
+  }
+
   // ---------- language detective ----------
   function langFacts(c) {
     const shown = c.where.slice(0, 10);
@@ -1668,7 +1933,7 @@
     const badges = [];
 
     let isBest = false;
-    if (!g.practice) {
+    if (!g.practice && !g.tour) {
       const key = bestKey(g.mode), best = store.get(key, null);
       const better = g.endless ? (!best || g.correct > best.correct) : (!best || g.score > best.score);
       if (g.score > 0 && better) {
@@ -1682,6 +1947,23 @@
       if (g.mode === 'flagBuild' && n >= 5 && acc === 100) Events.inc('flagPerfect');
     }
     if (isBest) badges.push('<span class="r-badge">New personal best</span>');
+
+    // World Tour stage: stars + unlocks
+    let tourStars = 0, nextStage = null;
+    if (g.tour) {
+      const { r, i } = g.tour;
+      tourStars = acc === 100 ? 3 : acc >= 80 ? 2 : acc >= 60 ? 1 : 0;
+      const before = Tour.save(r, i, tourStars);
+      Events.addMode('tour');
+      badges.push(`<span class="r-badge stars">${'★'.repeat(tourStars)}<i>${'★'.repeat(3 - tourStars)}</i></span>`);
+      if (!tourStars) badges.push('<span class="r-badge alt">Get 60% or more to earn a star and unlock the next stage</span>');
+      else if (!before) {
+        if (i + 1 < TOUR_STAGES.length) badges.push(`<span class="r-badge alt">Unlocked: stage ${i + 2} — ${TOUR_STAGES[i + 1].name}</span>`);
+        else if (r + 1 < TOUR_REGIONS.length) badges.push(`<span class="r-badge">New region unlocked: ${TOUR_REGIONS[r + 1]}!</span>`);
+        else badges.push('<span class="r-badge">You’ve toured the whole world!</span>');
+      } else if (tourStars > before) badges.push('<span class="r-badge alt">New best for this stage</span>');
+      if (tourStars) nextStage = i + 1 < TOUR_STAGES.length ? [r, i + 1] : r + 1 < TOUR_REGIONS.length ? [r + 1, 0] : null;
+    }
 
     if (g.daily) {
       const today = dayKey();
@@ -1699,10 +1981,12 @@
       badges.push('<span class="r-badge alt">Replay — today’s score is already saved</span>');
     }
 
-    const title = g.endless ? (g.correct >= 20 ? 'Incredible run.' : g.correct >= 10 ? 'Great instincts.' : g.correct >= 5 ? 'Nice streak.' : 'Better luck next time.')
+    const title = g.tour ? ['Not quite there yet.', 'Stage cleared!', 'Great travelling!', 'Perfect stop!'][tourStars] : g.endless ? (g.correct >= 20 ? 'Incredible run.' : g.correct >= 10 ? 'Great instincts.' : g.correct >= 5 ? 'Nice streak.' : 'Better luck next time.')
       : g.timed ? (g.correct >= 25 ? 'Lightning fast.' : g.correct >= 15 ? 'Quick thinking.' : g.correct >= 8 ? 'Good pace.' : 'Warm-up done.')
         : acc === 100 ? 'Flawless.' : acc >= 80 ? 'Excellent work.' : acc >= 60 ? 'Solid run.' : acc >= 40 ? 'Getting there.' : 'Keep practising.';
-    $('#rMode').textContent = `${MODES[g.mode].title}${MODES[g.mode].allRegions || g.mode === 'daily' ? '' : ' · ' + regionLabel(settings.region)}${g.practice ? ' · practice' : ''}`;
+    $('#rMode').textContent = g.tour
+      ? `World Tour · ${TOUR_REGIONS[g.tour.r]} · Stage ${g.tour.i + 1}: ${TOUR_STAGES[g.tour.i].name}`
+      : `${MODES[g.mode].title}${MODES[g.mode].allRegions || g.mode === 'daily' || g.mode === 'tour' ? '' : ' · ' + regionLabel(settings.region)}${g.practice ? ' · practice' : ''}`;
     $('#rTitle').textContent = title;
     $('#rBadges').innerHTML = badges.join('');
     const stats = g.endless
@@ -1711,10 +1995,12 @@
     $('#rStats').innerHTML = stats.map(([v, l]) => `<div class="stat"><b>${v}</b><small>${l}</small></div>`).join('');
     renderMistakes(g.mistakes.map(m => ({ c: m.q.c, expected: m.expected, given: m.given })));
 
-    $('#againBtn').onclick = () => startGame(g.mode);
+    setResultButtons(g.tour
+      ? { again: ['Retry stage', () => startTourStage(g.tour.r, g.tour.i)], home: ['World Tour map', showTour], next: nextStage && Tour.stageOpen(...nextStage) ? () => startTourStage(...nextStage) : null }
+      : { again: ['Play again', () => startGame(g.mode)] });
     $('#mistakesBtn').hidden = !g.mistakes.length || g.endless;
     $('#mistakesBtn').onclick = () => startGame(g.mode, {
-      questions: g.mistakes.map(({ q }) => ({ c: q.c, type: q.type, rev: q.rev, end: q.end, path: q.path, layout: q.layout }))
+      questions: g.mistakes.map(({ q }) => ({ ...q, correctLabel: undefined, drawn: false, answered: undefined }))
     });
 
     MapView.onClick = null; MapView.onPoint = null; MapView.onCapital = null;
@@ -1726,6 +2012,13 @@
     Achievements.check();
   }
 
+  function setResultButtons({ again, home = ['Change mode', goHome], next = null }) {
+    $('#againBtn').textContent = again[0]; $('#againBtn').onclick = again[1];
+    $('#homeBtn').textContent = home[0]; $('#homeBtn').onclick = home[1];
+    $('#nextStageBtn').hidden = !next; $('#nextStageBtn').onclick = next;
+    $('#againBtn').classList.toggle('primary', !next);
+  }
+
   function renderMistakes(list, emptyText = 'No mistakes — nothing to review.') {
     $('#mistakesTitle').textContent = list.length ? `Review · ${list.length} to learn` : 'Review';
     $('#rMistakes').innerHTML = list.length
@@ -1733,6 +2026,9 @@
         const c = m.c;
         if (c.kind === 'lang') {
           return `<li><span class="mk-icon"><svg viewBox="0 0 24 24">${ICONS.langDetective}</svg></span><div><b>${esc(c.n)}</b><span>${esc(c.s)}${m.given ? ` · <span class="you">you said ${esc(m.given)}</span>` : ''} · spoken in ${esc(c.where.slice(0, 3).map(x => x.n).join(', '))}${c.where.length > 3 ? '…' : ''}</span></div></li>`;
+        }
+        if (c.kind === 'landmark') {
+          return `<li><img src="${flagUrl(c.country)}" alt="" loading="lazy"><div><b>${esc(c.n)}</b><span>${esc(c.place)}, ${esc(c.country.n)}${m.given ? ` · <span class="you">you were ${esc(m.given)}</span>` : ''}</span></div></li>`;
         }
         if (c.kind === 'feature') {
           return `<li><span class="mk-icon"><svg viewBox="0 0 24 24">${ICONS.features}</svg></span><div><b>${esc(c.n)}</b><span>${FEATURE_KIND[c.t]}${m.given ? ` · <span class="you">you were ${esc(m.given)}</span>` : ''}</span></div></li>`;
@@ -1871,7 +2167,7 @@
       .map(([v, l]) => `<div class="stat"><b>${v}</b><small>${l}</small></div>`).join('');
     const missed = g.pool.filter(c => !g.found.has(c));
     renderMistakes(missed.map(c => ({ c })), 'You got every country!');
-    $('#againBtn').onclick = () => startGame('nameall');
+    setResultButtons({ again: ['Play again', () => startGame('nameall')] });
     $('#mistakesBtn').hidden = !missed.length;
     $('#mistakesBtn').onclick = () => startGame('identify', { questions: shuffle(missed).map(c => ({ c, type: onMap(c) ? 'identify' : 'flag' })) });
     showScreen('results');
@@ -1989,6 +2285,105 @@
   $('#resetBtn').onclick = () => { if (confirmReset()) { renderProgressStats(); MapView.showMastery(); } };
 
   // =====================================================================
+  // World Tour
+  // =====================================================================
+  const LOCK = '<svg viewBox="0 0 24 24" class="lock-ic"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+  async function showTour() {
+    stopTimers(); rng = Math.random; game = null;
+    showScreen('tour');
+    renderTour();
+    try { await MapView.load(); } catch (e) { return; }
+    MapView.prepare($('#tourMapSlot'), { names: true });
+    TOUR_REGIONS.forEach((reg, r) => {
+      const cls = Tour.regionDone(r) ? 'm3' : Tour.regionOpen(r) ? 'm2' : null;
+      if (cls) ACTIVE.filter(c => c.r === reg).forEach(c => MapView.nodes(c).forEach(el => el.classList.add(cls)));
+    });
+    const hubs = TOUR_REGIONS.map(r => TOUR_HUBS[r]);
+    for (let r = 0; r < hubs.length - 1; r++) MapView.drawLine(hubs[r], hubs[r + 1], 'tour-route ' + (Tour.regionDone(r) ? 'done' : 'todo'));
+    hubs.forEach((h, r) => MapView.drawPoint(h, 'tour-hub ' + (Tour.regionDone(r) ? 'done' : Tour.regionOpen(r) ? 'open' : 'locked')));
+    MapView.resetView('All');
+  }
+  function renderTour() {
+    const cur = Tour.current();
+    $('#tourStars').textContent = Tour.stars();
+    $('#tourTotal').textContent = `/ ${TOUR_TOTAL} stars`;
+    $('#tourSub').textContent = cur
+      ? `Next stop: ${TOUR_REGIONS[cur[0]]}, stage ${cur[1] + 1}. Each stage has 8 questions — 60% earns ★, 80% ★★, 100% ★★★.`
+      : 'You’ve cleared every stage! Go back and collect 3 stars everywhere.';
+    $('#tourRegions').innerHTML = TOUR_REGIONS.map((reg, r) => {
+      const open = Tour.regionOpen(r);
+      return `<div class="tour-region ${open ? '' : 'locked'} ${Tour.regionDone(r) ? 'done' : ''}">
+        <div class="tr-head"><b>${r + 1}. ${reg}</b><span>${Tour.regionStars(r)} / ${TOUR_STAGES.length * 3} ★</span></div>
+        <div class="tr-stages">${TOUR_STAGES.map((st, i) => {
+          const so = Tour.stageOpen(r, i), s = Tour.starsOf(r, i), isCur = cur && cur[0] === r && cur[1] === i;
+          return `<button class="tstage ${so ? '' : 'locked'} ${s ? 'cleared' : ''} ${isCur ? 'current' : ''}" data-tr="${r}" data-ti="${i}" ${so ? '' : 'disabled'}>
+            <span class="tstage-num">${so ? i + 1 : LOCK}</span><span class="tstage-name">${st.name}</span>
+            <span class="tstage-stars">${'★'.repeat(s)}<i>${'★'.repeat(3 - s)}</i></span></button>`;
+        }).join('')}</div>
+        ${open ? '' : `<p class="muted">Clear every stage in ${TOUR_REGIONS[r - 1]} to unlock.</p>`}
+      </div>`;
+    }).join('');
+  }
+  $('#tourRegions').addEventListener('click', e => {
+    const b = e.target.closest('.tstage:not([disabled])');
+    if (b) startTourStage(Number(b.dataset.tr), Number(b.dataset.ti));
+  });
+  function startTourStage(r, i) {
+    const region = TOUR_REGIONS[r], st = TOUR_STAGES[i], qs = [];
+    for (const c of shuffle(ACTIVE.filter(x => x.r === region))) {
+      if (qs.length >= 8) break;
+      const types = st.types.filter(t => TYPES[t].ok(c));
+      if (types.length) qs.push({ c, type: pick(types) });
+    }
+    startGame('tour', { questions: qs, tour: { r, i } });
+  }
+
+  // =====================================================================
+  // Passport
+  // =====================================================================
+  const stamped = c => !!(Progress.data[c.a2] && Progress.data[c.a2].m);
+  function stampHTML(c) {
+    if (!stamped(c)) return `<div class="stamp empty"><span>${esc(c.n)}</span></div>`;
+    let h = 7; for (const ch of c.a2 + c.n) h = (h * 31 + ch.charCodeAt(0)) % 100003;
+    const colors = ['#c0392b', '#1f6fb2', '#2a8a57', '#7d3c98', '#b9770e', '#1b4f72', '#a93226', '#117a65'];
+    const shape = ['round', 'rect', 'oval'][h % 3], rot = (h % 21) - 10;
+    const date = new Date(Progress.data[c.a2].m).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+    return `<div class="stamp ${shape}" style="--sc:${colors[h % colors.length]};--rot:${rot}deg" title="${esc(c.n)} — mastered ${date}">
+      <small class="st-top">WAYFINDER</small><b>${c.a2.toUpperCase()}</b><span>${esc(c.n)}</span><small>${date}</small></div>`;
+  }
+  function showPassport() {
+    stopTimers(); game = null;
+    const got = ACTIVE.filter(stamped).length;
+    $('#passportCount').textContent = `${got} / ${ACTIVE.length}`;
+    $('#passportBar').style.width = `${got / ACTIVE.length * 100}%`;
+    $('#passportPages').innerHTML = REGIONS.slice(1).map(r => {
+      const list = ACTIVE.filter(c => c.r === r).sort((a, b) => stamped(b) - stamped(a) || a.n.localeCompare(b.n));
+      return `<section class="pp-page"><h3>${r} <small>${list.filter(stamped).length} / ${list.length}</small></h3>
+        <div class="stamps">${list.map(stampHTML).join('')}</div></section>`;
+    }).join('');
+    showScreen('passport');
+  }
+
+  // =====================================================================
+  // Map styles
+  // =====================================================================
+  function activeStyle() {
+    const lvl = XP.info().lvl;
+    const st = MAP_STYLES.find(s => s[0] === settings.mapStyle);
+    return st && st[2] <= lvl ? st : MAP_STYLES[0];
+  }
+  function applyMapStyle() { $('#mapWrap').dataset.style = activeStyle()[0]; }
+  function renderStylePicker() {
+    const lvl = XP.info().lvl, cur = activeStyle()[0];
+    $('#setStyles').innerHTML = MAP_STYLES.map(([id, name, need, sea, land]) => {
+      const locked = need > lvl;
+      return `<button class="style-card ${id === cur ? 'on' : ''} ${locked ? 'locked' : ''}" data-style-id="${id}" ${locked ? 'disabled' : ''}>
+        <span class="style-swatch" style="--s1:${sea};--s2:${land}"></span>
+        <b>${name}</b><small>${locked ? `Unlocks at level ${need}` : id === cur ? 'In use' : 'Tap to use'}</small></button>`;
+    }).join('');
+  }
+
+  // =====================================================================
   // Achievements & level page
   // =====================================================================
   function showProfile() {
@@ -2011,6 +2406,7 @@
         <span class="ach-icon">${ICON.trophy}</span>
         <div><b>${esc(title)}</b><span>${esc(desc)}</span>${got[id] ? `<small>Unlocked ${new Date(got[id]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</small>` : ''}</div>
       </div>`).join('');
+    $('#styleList').innerHTML = MAP_STYLES.slice(1).map(([, name, need]) => `<span class="title-chip ${lvl >= need ? 'on' : ''}">Lv ${need} · ${name} map</span>`).join('');
     $('#titleList').innerHTML = TITLES.map(([min, name]) => `<span class="title-chip ${lvl >= min ? 'on' : ''}">Lv ${min} · ${name}</span>`).join('');
     $('#xpHow').textContent = 'Earn XP for every right answer (+10, more on a streak), +2 for trying, +20 per finished game and +50 per achievement.';
     showScreen('profile');
@@ -2037,11 +2433,14 @@
     $('#setTimer').innerHTML = chips('timer');
     $('#setTheme').innerHTML = chipRow([['light', 'Light'], ['dark', 'Dark']], settings.theme, 'theme-set');
     $('#setSound').innerHTML = chipRow([['on', 'On'], ['off', 'Off']], settings.muted ? 'off' : 'on', 'sound-set');
+    renderStylePicker();
     Install.renderSettings();
   }
   $('#settings').addEventListener('click', e => {
     const chip = e.target.closest('.chip');
     if (chip && handleChip(chip)) { renderSettings(); return; }
+    const sc = e.target.closest('.style-card:not([disabled])');
+    if (sc) { settings.mapStyle = sc.dataset.styleId; saveSettings(); applyMapStyle(); renderSettings(); return; }
     if (e.target.closest('#presetUN')) { settings.excluded = OPTIONAL.map(o => o[0]); saveSettings(); refreshActive(); renderSettings(); toast('Now using the 193 UN member states.'); }
     if (e.target.closest('#preset197')) { settings.excluded = []; saveSettings(); refreshActive(); renderSettings(); toast('Now using all 197 countries.'); }
   });
@@ -2191,6 +2590,7 @@
   // Boot
   // =====================================================================
   refreshActive();
+  applyMapStyle();
   applyTheme();
   applySound();
   renderXpPill();
